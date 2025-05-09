@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ReactNode } from 'react';
@@ -28,7 +27,7 @@ export const useWallet = (): WalletState => {
 
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [address, setAddress] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true); // Initialize loading to true
+  const [loading, setLoading] = useState<boolean>(false); // Initialize loading to false
   const { toast } = useToast();
 
   const [phantomProvider, setPhantomProvider] = useState<any>(null);
@@ -42,10 +41,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const attemptAutoConnect = async () => {
       if (typeof window === 'undefined') {
-        setLoading(false);
+        // setLoading(false); // Already false by default
         return;
       }
-      setLoading(true);
+      setLoading(true); // Set to true when client-side check begins
       const storedAddress = localStorage.getItem(WALLET_ADDRESS_KEY);
       if (storedAddress) {
         try {
@@ -64,7 +63,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           setAddress(null);
         }
       }
-      setLoading(false);
+      setLoading(false); // Set to false after check completes
     };
 
     attemptAutoConnect();
@@ -113,8 +112,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true);
     try {
       if (phantomProvider?.isPhantom && phantomProvider.publicKey) {
-        await phantomProvider.disconnect();
-        console.log("Phantom wallet disconnect method called.");
+        // Check if disconnect is a function before calling
+        if (typeof phantomProvider.disconnect === 'function') {
+            await phantomProvider.disconnect();
+            console.log("Phantom wallet disconnect method called.");
+        } else {
+            console.warn("Phantom provider does not have a disconnect method.");
+        }
       }
     } catch (error) {
       console.error("Error during Phantom disconnect:", error);
@@ -138,6 +142,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
     const handleAccountChanged = (publicKey: { toString: () => string } | null) => {
       if (typeof window === 'undefined') return;
+      setLoading(true); // Indicate change is processing
       if (publicKey) {
         const newAddress = publicKey.toString();
         setAddress(newAddress);
@@ -149,6 +154,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           variant: "default",
         });
       } else {
+        // This case might occur if the user disconnects all accounts from the dapp in Phantom settings
         setAddress(null);
         localStorage.removeItem(WALLET_ADDRESS_KEY);
         console.log('Phantom account disconnected via wallet UI (accountChanged gave null).');
@@ -158,10 +164,14 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           variant: "default",
         });
       }
+      setLoading(false);
     };
 
+    // Phantom may emit 'disconnect' when the user disconnects the dapp
+    // or if the connection is lost for other reasons.
     const handleDisconnectEvent = () => {
       if (typeof window === 'undefined') return;
+      setLoading(true);
       setAddress(null);
       localStorage.removeItem(WALLET_ADDRESS_KEY);
       console.log('Phantom "disconnect" event received.');
@@ -170,10 +180,15 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           description: "Your wallet session has ended.",
           variant: "default",
       });
+      setLoading(false);
     };
     
     phantomProvider.on('accountChanged', handleAccountChanged);
+    // The 'disconnect' event might be specific to EIP-1193 providers, 
+    // Phantom's documentation should be checked for the correct event if this doesn't work as expected.
+    // Some wallets use 'accountsChanged' with an empty array, or 'disconnect'.
     phantomProvider.on('disconnect', handleDisconnectEvent);
+
 
     return () => {
       phantomProvider.removeListener?.('accountChanged', handleAccountChanged);
