@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -224,7 +225,7 @@ export function LaunchCampaignForm() {
                   <FormItem>
                     <FormLabel>Token Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., Awesome Game Token" {...field} />
+                      <Input placeholder="E.g., JUMBO, JARVIS, ...." {...field} />
                     </FormControl>
                     <FormDescription>The full name of your project's token.</FormDescription>
                     <FormMessage />
