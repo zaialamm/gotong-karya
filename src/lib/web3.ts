@@ -2,17 +2,58 @@
 import { CAMPAIGNS_DATA, IPFS_BATIK_BADGE_URL_BASE, MARKETPLACE_FEE_PERCENTAGE, SOL_TO_USD_RATE } from './constants';
 import type { Campaign } from '@/types';
 
+// Phantom Wallet Provider interface
+interface PhantomProvider {
+  isPhantom: boolean;
+  connect: (options?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: { toString: () => string } }>;
+  disconnect: () => Promise<void>;
+  on: (event: string, callback: (args?: any) => void) => void;
+  removeListener?: (event: string, callback: (args?: any) => void) => void; // Optional for cleanup
+  request: (method: string, params: any) => Promise<any>;
+  publicKey: { toString: () => string } | null;
+}
+
+// Extend the Window interface to include phantom
+declare global {
+  interface Window {
+    phantom?: {
+      solana?: PhantomProvider;
+    };
+  }
+}
+
+
 interface WalletConnection {
   address: string;
 }
 
 export const connectPhantomWallet = async (): Promise<WalletConnection | null> => {
   console.log("Attempting to connect to Phantom wallet...");
-  // Simulate asynchronous operation
-  await new Promise(resolve => setTimeout(resolve, 500));
-  const mockAddress = `SolWallet${Math.random().toString(16).slice(2, 10)}`;
-  console.log(`Connected to Phantom, address: ${mockAddress}`);
-  return { address: mockAddress };
+  const provider = window.phantom?.solana;
+
+  if (provider?.isPhantom) {
+    try {
+      // onlyIfTrusted: false will prompt the user if the dapp is not already trusted.
+      const resp = await provider.connect({ onlyIfTrusted: false });
+      const publicKeyString = resp.publicKey.toString();
+      console.log(`Connected to Phantom, address: ${publicKeyString}`);
+      return { address: publicKeyString };
+    } catch (err: any) {
+      // Handles user rejection, or other connection errors
+      console.error("Phantom Wallet connection error:", err);
+      if (err.message && typeof err.message === 'string') {
+        throw new Error(err.message);
+      }
+      throw new Error("Could not connect to Phantom Wallet. User may have rejected the request.");
+    }
+  } else {
+    // Phantom provider not found
+    console.warn("Phantom wallet not found. Please install it.");
+    // This error will be caught by the calling hook to inform the user.
+    // Optionally, can redirect to Phantom installation page here.
+    // window.open("https://phantom.app/", "_blank");
+    throw new Error("Phantom wallet not found. Please install the extension.");
+  }
 };
 
 export interface FundingResult {
@@ -129,4 +170,25 @@ export const launchNewCampaign = async (formData: {
   // We can also add it to a local state or a temporary mock data array if needed for immediate reflection in UI.
   
   return { campaignId, message };
+};
+
+// Function to check current connection status without prompting user (if already trusted)
+export const checkPhantomConnection = async (): Promise<WalletConnection | null> => {
+  const provider = window.phantom?.solana;
+  if (provider?.isPhantom && provider.publicKey) {
+    // If already connected (e.g., from a previous session and dapp is trusted)
+    // Or if connect({ onlyIfTrusted: true }) was successful
+    try {
+      // Attempt to connect silently if trusted
+      const resp = await provider.connect({ onlyIfTrusted: true });
+      const publicKeyString = resp.publicKey.toString();
+      console.log(`Silently re-connected to Phantom, address: ${publicKeyString}`);
+      return { address: publicKeyString };
+    } catch (error) {
+      // Not trusted or user has disconnected from Phantom UI
+      console.log("Phantom: Not connected or not trusted for silent re-connection.");
+      return null;
+    }
+  }
+  return null;
 };
