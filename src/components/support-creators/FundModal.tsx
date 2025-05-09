@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,12 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Campaign } from "@/types";
 import { fundCampaign } from "@/lib/web3"; // Mock function
 import { useToast } from "@/hooks/use-toast";
-import { SOL_CURRENCY_SYMBOL, USDC_CURRENCY_SYMBOL, USDT_CURRENCY_SYMBOL, SOL_TO_USD_RATE, SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
-import { Send, Sparkles } from "lucide-react";
+import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE } from "@/lib/constants";
+import { Send, Sparkles, RefreshCw } from "lucide-react";
 
 interface FundModalProps {
   campaign: Campaign;
@@ -27,32 +26,49 @@ interface FundModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type Currency = "SOL" | "USDC" | "USDT";
-
 export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
-  const [amount, setAmount] = useState<string>("0.1");
-  const [currency, setCurrency] = useState<Currency>("SOL");
+  const [amountIDR, setAmountIDR] = useState<string>("80000"); // Default to 80,000 IDR (approx 0.1 SOL)
   const [isFunding, setIsFunding] = useState(false);
   const { toast } = useToast();
+  const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("");
+
+  useEffect(() => {
+    const numericAmountIDR = parseFloat(amountIDR);
+    if (!isNaN(numericAmountIDR) && numericAmountIDR > 0 && SOL_TO_IDR_RATE > 0) {
+      const calculatedSOL = numericAmountIDR / SOL_TO_IDR_RATE;
+      setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}`);
+    } else {
+      setSolEquivalentDisplay(`Enter a valid IDR amount`);
+    }
+  }, [amountIDR]);
 
   const handleFund = async () => {
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid positive amount.", variant: "destructive" });
+    const numericAmountIDR = parseFloat(amountIDR);
+    if (isNaN(numericAmountIDR) || numericAmountIDR <= 0) {
+      toast({ title: "Invalid Amount", description: "Please enter a valid positive IDR amount.", variant: "destructive" });
       return;
+    }
+    if (SOL_TO_IDR_RATE <= 0) {
+      toast({ title: "Configuration Error", description: "SOL to IDR rate is not configured correctly.", variant: "destructive" });
+      return;
+    }
+
+    const solAmountToFund = numericAmountIDR / SOL_TO_IDR_RATE;
+    if (solAmountToFund <= 0) {
+        toast({ title: "Invalid Amount", description: "Calculated SOL amount is too small to fund.", variant: "destructive" });
+        return;
     }
 
     setIsFunding(true);
     try {
-      // Log to console as requested (implicit in mock function)
-      const result = await fundCampaign(campaign.id, numericAmount, currency);
+      const result = await fundCampaign(campaign.id, solAmountToFund, "SOL");
       toast({
         title: "Funding Successful!",
-        description: result.message, // Includes tokens minted, ownership, badge URL
-        duration: 7000, // Longer duration to read the message
+        description: result.message, 
+        duration: 7000, 
       });
-      onOpenChange(false); // Close modal on success
-      setAmount("0.1"); // Reset amount
+      onOpenChange(false); 
+      setAmountIDR("80000"); 
     } catch (error) {
       console.error("Funding error:", error);
       toast({ title: "Funding Failed", description: (error as Error).message || "An unexpected error occurred.", variant: "destructive" });
@@ -61,16 +77,10 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
     }
   };
   
-  const getEquivalentValue = () => {
-    const numericAmount = parseFloat(amount) || 0;
-    if (currency === "SOL") {
-      return `≈ ${(numericAmount * SOL_TO_IDR_RATE).toLocaleString()} ${IDR_CURRENCY_SYMBOL} / ${(numericAmount * SOL_TO_USD_RATE).toLocaleString()} USD`;
-    } else if (currency === "USDC" || currency === "USDT") {
-      return `≈ ${(numericAmount / SOL_TO_USD_RATE).toFixed(4)} ${SOL_CURRENCY_SYMBOL}`;
-    }
-    return "";
-  };
-
+  const numericAmountIDRForButton = parseFloat(amountIDR);
+  const solEquivalentForButton = !isNaN(numericAmountIDRForButton) && numericAmountIDRForButton > 0 && SOL_TO_IDR_RATE > 0
+    ? (numericAmountIDRForButton / SOL_TO_IDR_RATE)
+    : 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -81,42 +91,30 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
             Fund {campaign.projectName}
           </DialogTitle>
           <DialogDescription>
-            Support {campaign.creator.name} by contributing to their campaign.
+            Support {campaign.creator.name} by contributing in {IDR_CURRENCY_SYMBOL}. Your contribution will be converted to {SOL_CURRENCY_SYMBOL}.
             You'll receive {campaign.tokenTicker} tokens in return.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div className="grid grid-cols-3 items-center gap-4">
-            <Label htmlFor="amount" className="text-right col-span-1">
-              Amount
+          <div className="grid grid-cols-3 items-center gap-x-4 gap-y-2">
+            <Label htmlFor="amountIDR" className="text-right col-span-1">
+              Amount ({IDR_CURRENCY_SYMBOL})
             </Label>
             <Input
-              id="amount"
+              id="amountIDR"
               type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              value={amountIDR}
+              onChange={(e) => setAmountIDR(e.target.value)}
               className="col-span-2"
-              step="0.01"
+              placeholder="Enter amount in IDR"
+              step="1000" // Common step for IDR
             />
+            <div/> 
+            <div className="col-span-2 text-xs text-muted-foreground flex items-center">
+                <RefreshCw className="mr-1.5 h-3 w-3 text-primary"/>
+                <span>{solEquivalentDisplay}</span>
+            </div>
           </div>
-          <div className="grid grid-cols-3 items-center gap-4">
-            <Label htmlFor="currency" className="text-right col-span-1">
-              Currency
-            </Label>
-            <Select value={currency} onValueChange={(value: Currency) => setCurrency(value)}>
-              <SelectTrigger className="col-span-2">
-                <SelectValue placeholder="Select currency" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="SOL">{SOL_CURRENCY_SYMBOL}</SelectItem>
-                <SelectItem value="USDC">{USDC_CURRENCY_SYMBOL}</SelectItem>
-                <SelectItem value="USDT">{USDT_CURRENCY_SYMBOL}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {parseFloat(amount) > 0 && (
-            <p className="text-xs text-muted-foreground text-right pr-1">{getEquivalentValue()}</p>
-          )}
         </div>
         <DialogFooter className="sm:justify-between">
           <DialogClose asChild>
@@ -124,12 +122,18 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
               Cancel
             </Button>
           </DialogClose>
-          <Button type="button" onClick={handleFund} disabled={isFunding} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+          <Button 
+            type="button" 
+            onClick={handleFund} 
+            disabled={isFunding || solEquivalentForButton <=0} 
+            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+          >
             <Send className="mr-2 h-4 w-4" />
-            {isFunding ? "Processing..." : `Fund Now (${amount} ${currency})`}
+            {isFunding ? "Processing..." : `Fund (~${solEquivalentForButton > 0 ? solEquivalentForButton.toFixed(4) : '0.0000'} SOL)`}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
