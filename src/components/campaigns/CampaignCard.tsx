@@ -1,6 +1,8 @@
+
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import type { Campaign } from "@/types";
 import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -90,9 +92,11 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
         )}
       </CardContent>
       <CardFooter>
-        <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary/10">
-          <TrendingUp className="mr-2 h-4 w-4" /> View Details
-        </Button>
+        <Link href={`/campaigns/${campaign.id}`} passHref className="w-full">
+          <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary/10">
+            <TrendingUp className="mr-2 h-4 w-4" /> View Details
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   );
