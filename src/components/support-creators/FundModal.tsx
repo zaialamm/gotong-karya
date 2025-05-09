@@ -19,7 +19,7 @@ import { fundCampaign } from "@/lib/web3"; // Mock function
 import { useToast } from "@/hooks/use-toast";
 import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE as FALLBACK_SOL_TO_IDR_RATE } from "@/lib/constants";
 import { Send, Sparkles, RefreshCw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
 
 interface FundModalProps {
   campaign: Campaign;
@@ -28,7 +28,7 @@ interface FundModalProps {
 }
 
 export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
-  const [amountIDR, setAmountIDR] = useState<string>("80000");
+  const [numericAmountIDR, setNumericAmountIDR] = useState<number>(80000); // Store as number
   const [isFunding, setIsFunding] = useState(false);
   const { toast } = useToast();
   
@@ -40,7 +40,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
   const effectiveSolToIdrRate = liveSolToIdrRate ?? FALLBACK_SOL_TO_IDR_RATE;
 
   useEffect(() => {
-    if (!isOpen) return; // Only fetch if modal is open
+    if (!isOpen) return; 
 
     async function fetchRate() {
       setIsLoadingRate(true);
@@ -60,7 +60,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
       } catch (error) {
         console.error("Error fetching SOL/IDR rate in FundModal:", error);
         setRateError((error as Error).message);
-        setLiveSolToIdrRate(null); // Ensure fallback is used
+        setLiveSolToIdrRate(null); 
       } finally {
         setIsLoadingRate(false);
       }
@@ -69,12 +69,12 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
   }, [isOpen]);
 
   useEffect(() => {
-    const numericAmountIDR = parseFloat(amountIDR);
+    const currentNumericAmount = typeof numericAmountIDR === 'number' && !isNaN(numericAmountIDR) ? numericAmountIDR : 0;
     
     if (isLoadingRate) {
         setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
     } else if (rateError) {
-        const calculatedSOL = (numericAmountIDR > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (numericAmountIDR / FALLBACK_SOL_TO_IDR_RATE) : 0;
+        const calculatedSOL = (currentNumericAmount > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (currentNumericAmount / FALLBACK_SOL_TO_IDR_RATE) : 0;
         const displayRate = `(Fallback: 1 ${SOL_CURRENCY_SYMBOL} = ${FALLBACK_SOL_TO_IDR_RATE.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
         if (calculatedSOL > 0) {
             setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
@@ -82,24 +82,23 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
             setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
         }
     } else if (liveSolToIdrRate) {
-        if (numericAmountIDR > 0) {
-            const calculatedSOL = numericAmountIDR / liveSolToIdrRate;
+        if (currentNumericAmount > 0) {
+            const calculatedSOL = currentNumericAmount / liveSolToIdrRate;
             setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
         } else {
             setSolEquivalentDisplay(`Enter ${IDR_CURRENCY_SYMBOL} amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
         }
     } else {
-        const calculatedSOL = (numericAmountIDR > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (numericAmountIDR / FALLBACK_SOL_TO_IDR_RATE) : 0;
+        const calculatedSOL = (currentNumericAmount > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (currentNumericAmount / FALLBACK_SOL_TO_IDR_RATE) : 0;
         if (calculatedSOL > 0) {
             setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate)`);
         } else {
             setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
         }
     }
-  }, [amountIDR, liveSolToIdrRate, isLoadingRate, rateError]);
+  }, [numericAmountIDR, liveSolToIdrRate, isLoadingRate, rateError, FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
 
   const handleFund = async () => {
-    const numericAmountIDR = parseFloat(amountIDR);
     if (isNaN(numericAmountIDR) || numericAmountIDR <= 0) {
       toast({ title: "Invalid Amount", description: `Please enter a valid positive ${IDR_CURRENCY_SYMBOL} amount.`, variant: "destructive" });
       return;
@@ -125,7 +124,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
         duration: 7000, 
       });
       onOpenChange(false); 
-      setAmountIDR("80000"); 
+      setNumericAmountIDR(80000); 
     } catch (error) {
       console.error("Funding error:", error);
       toast({ title: "Funding Failed", description: (error as Error).message || "An unexpected error occurred.", variant: "destructive" });
@@ -134,13 +133,17 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
     }
   };
   
-  const numericAmountIDRForButton = parseFloat(amountIDR);
-  const solEquivalentForButton = !isNaN(numericAmountIDRForButton) && numericAmountIDRForButton > 0 && effectiveSolToIdrRate > 0
-    ? (numericAmountIDRForButton / effectiveSolToIdrRate)
+  const solEquivalentForButton = !isNaN(numericAmountIDR) && numericAmountIDR > 0 && effectiveSolToIdrRate > 0
+    ? (numericAmountIDR / effectiveSolToIdrRate)
     : 0;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      onOpenChange(open);
+      if (!open) { // Reset amount when modal closes
+        setNumericAmountIDR(80000);
+      }
+    }}>
       <DialogContent className="sm:max-w-md bg-card text-card-foreground">
         <DialogHeader>
           <DialogTitle className="text-2xl text-primary flex items-center">
@@ -159,12 +162,18 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
             </Label>
             <Input
               id="amountIDR"
-              type="number"
-              value={amountIDR}
-              onChange={(e) => setAmountIDR(e.target.value)}
+              type="text"
+              value={formatToIDR(numericAmountIDR)}
+              onChange={(e) => {
+                const val = parseFromIDR(e.target.value);
+                setNumericAmountIDR(val); // val can be NaN
+              }}
+              onBlur={(e) => { // Ensure correct formatting on blur
+                const val = parseFromIDR(e.target.value);
+                setNumericAmountIDR(val);
+              }}
               className="col-span-2"
-              placeholder="Enter amount in IDR"
-              step="1000" 
+              placeholder={formatToIDR(80000)}
               disabled={isLoadingRate || isFunding}
             />
             <div/> 
@@ -183,7 +192,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
           <Button 
             type="button" 
             onClick={handleFund} 
-            disabled={isFunding || isLoadingRate || solEquivalentForButton <=0} 
+            disabled={isFunding || isLoadingRate || solEquivalentForButton <=0 || isNaN(numericAmountIDR)} 
             className="bg-accent hover:bg-accent/90 text-accent-foreground"
           >
             <Send className="mr-2 h-4 w-4" />

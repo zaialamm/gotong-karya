@@ -22,12 +22,14 @@ import { launchNewCampaign } from "@/lib/web3"; // Mock function
 import { SOL_TO_IDR_RATE as FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Rocket, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
 
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(1000),
-  fundingGoalIDR: z.coerce.number().positive("Funding goal in IDR must be a positive number.").min(100000, `Minimum funding goal is ${IDR_CURRENCY_SYMBOL} 100,000.`),
+  fundingGoalIDR: z.coerce.number({invalid_type_error: "Funding goal must be a number."})
+    .positive("Funding goal in IDR must be a positive number.")
+    .min(100000, `Minimum funding goal is ${formatToIDR(100000)}.`),
   tokenTicker: z.string().min(2, "Token ticker must be 2-5 characters.").max(5).regex(/^[A-Z0-9]+$/, "Ticker must be uppercase letters/numbers."),
   tokenName: z.string().min(5, "Token name must be at least 5 characters.").max(50),
 });
@@ -46,10 +48,11 @@ export function LaunchCampaignForm() {
     defaultValues: {
       projectName: "",
       description: "",
-      fundingGoalIDR: 0,
+      // fundingGoalIDR: 0, // Default to undefined to allow placeholder to show properly
       tokenTicker: "",
       tokenName: "",
     },
+    mode: "onChange", // Validate on change for better UX with formatted input
   });
 
   const fundingGoalIDRValue = form.watch("fundingGoalIDR");
@@ -74,7 +77,7 @@ export function LaunchCampaignForm() {
       } catch (error) {
         console.error("Error fetching SOL/IDR rate:", error);
         setRateError((error as Error).message);
-        setLiveSolToIdrRate(null); // Ensure fallback is used
+        setLiveSolToIdrRate(null); 
       } finally {
         setIsLoadingRate(false);
       }
@@ -83,32 +86,34 @@ export function LaunchCampaignForm() {
   }, []);
 
   useEffect(() => {
+    const numericFundingGoal = typeof fundingGoalIDRValue === 'number' && !isNaN(fundingGoalIDRValue) ? fundingGoalIDRValue : 0;
+
     if (isLoadingRate) {
       setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
     } else if (rateError) {
-      const calculatedSOL = fundingGoalIDRValue / FALLBACK_SOL_TO_IDR_RATE;
+      const calculatedSOL = numericFundingGoal / FALLBACK_SOL_TO_IDR_RATE;
       const displayRate = `(Fallback rate: 1 ${SOL_CURRENCY_SYMBOL} = ${FALLBACK_SOL_TO_IDR_RATE.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
-      if (fundingGoalIDRValue > 0) {
+      if (numericFundingGoal > 0) {
         setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
       } else {
         setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
       }
     } else if (liveSolToIdrRate) {
-      if (fundingGoalIDRValue > 0) {
-        const calculatedSOL = fundingGoalIDRValue / liveSolToIdrRate;
+      if (numericFundingGoal > 0) {
+        const calculatedSOL = numericFundingGoal / liveSolToIdrRate;
         setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
       } else {
         setSolEquivalentDisplay(`Enter IDR amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
       }
-    } else { // Should not happen if logic is correct, but as a safe fallback
-       const calculatedSOL = fundingGoalIDRValue / FALLBACK_SOL_TO_IDR_RATE;
-       if (fundingGoalIDRValue > 0) {
+    } else { 
+       const calculatedSOL = numericFundingGoal / FALLBACK_SOL_TO_IDR_RATE;
+       if (numericFundingGoal > 0) {
         setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate)`);
        } else {
         setSolEquivalentDisplay("Enter IDR amount to see SOL equivalent.");
        }
     }
-  }, [fundingGoalIDRValue, liveSolToIdrRate, isLoadingRate, rateError]);
+  }, [fundingGoalIDRValue, liveSolToIdrRate, isLoadingRate, rateError, FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
 
 
   async function onSubmit(values: LaunchCampaignFormValues) {
@@ -122,6 +127,7 @@ export function LaunchCampaignForm() {
     }
 
     try {
+      // values.fundingGoalIDR is already a number due to zod coercion
       const fundingGoalSOL = values.fundingGoalIDR / effectiveSolToIdrRate;
       if (fundingGoalSOL <= 0) {
         toast({
@@ -147,7 +153,7 @@ export function LaunchCampaignForm() {
       
       toast({
         title: "Campaign Creation Initiated!",
-        description: `${result.message} Funding goal: ${values.fundingGoalIDR.toLocaleString()} ${IDR_CURRENCY_SYMBOL} (~${campaignDataForApi.fundingGoalSOL} ${SOL_CURRENCY_SYMBOL}).`,
+        description: `${result.message} Funding goal: ${formatToIDR(values.fundingGoalIDR)} (~${campaignDataForApi.fundingGoalSOL} ${SOL_CURRENCY_SYMBOL}).`,
         variant: "default",
         duration: 7000,
       });
@@ -212,7 +218,19 @@ export function LaunchCampaignForm() {
                   <FormItem>
                     <FormLabel>Funding Goal ({IDR_CURRENCY_SYMBOL})</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder={`E.g., ${ (100 * FALLBACK_SOL_TO_IDR_RATE).toLocaleString()}`} {...field} />
+                      <Input
+                        type="text"
+                        placeholder={formatToIDR(100 * FALLBACK_SOL_TO_IDR_RATE)}
+                        value={field.value === undefined || isNaN(field.value) ? '' : formatToIDR(field.value)}
+                        onChange={(e) => {
+                          const numericValue = parseFromIDR(e.target.value);
+                          field.onChange(isNaN(numericValue) ? undefined : numericValue);
+                        }}
+                        onBlur={(e) => { // Re-format and set numeric value on blur
+                           const numericValue = parseFromIDR(e.target.value);
+                           field.onChange(isNaN(numericValue) ? undefined : numericValue);
+                        }}
+                      />
                     </FormControl>
                     <FormDescription>The amount of {IDR_CURRENCY_SYMBOL} you aim to raise.</FormDescription>
                     <div className="text-xs text-muted-foreground mt-1 flex items-center pt-1 min-h-[1.5rem]">
@@ -261,4 +279,3 @@ export function LaunchCampaignForm() {
     </Card>
   );
 }
-
