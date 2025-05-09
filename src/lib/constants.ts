@@ -1,10 +1,10 @@
 import type { Campaign, Creator, TokenInfo, UserTokenBalance, Trade } from '@/types';
 
-export const FALLBACK_SOL_TO_IDR_RATE = 800000; // Renamed from SOL_TO_IDR_RATE
-export const SOL_TO_USD_RATE = 200;
+export const FALLBACK_SOL_TO_IDR_RATE = 800000; 
+export const SOL_TO_USD_RATE = 200; // This constant seems unused, consider removing if not needed elsewhere.
 export const MARKETPLACE_FEE_PERCENTAGE = 0.007; // 0.7%
 
-export const IPFS_LOGO_URL = "https://picsum.photos/seed/gotongkarya_logo/120/40"; // Placeholder
+export const IPFS_LOGO_URL = "https://firestuff.storage.googleapis.com/v0/b/aidevs-407407.appspot.com/o/GotongKarya%20(2).png?alt=media&token=848b1577-9d94-4c2c-a964-291db9178fc0";
 export const IPFS_BATIK_BADGE_URL_BASE = "ipfs://QmBatikBadgeMockURL"; // Placeholder
 
 export const CREATORS_DATA: Creator[] = [

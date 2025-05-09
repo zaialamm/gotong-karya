@@ -73,13 +73,13 @@ export function Header() {
           <Image
             src={IPFS_LOGO_URL}
             alt="GotongKarya Logo"
-            width={100}
-            height={32}
-            className="h-8 w-auto rounded"
-            data-ai-hint="batik logo"
+            width={150} // Adjusted width for the new logo aspect ratio
+            height={40} // Adjusted height for the new logo aspect ratio
+            className="h-10 w-auto" // Maintain height and allow auto width
+            data-ai-hint="company logo"
             priority
           />
-          <span className="font-bold text-xl hidden sm:inline-block text-primary">GotongKarya</span>
+          {/* Removed the text span: <span className="font-bold text-xl hidden sm:inline-block text-primary">GotongKarya</span> */}
         </Link>
         
         <div className="flex-1 items-center justify-center hidden md:flex">
@@ -108,10 +108,10 @@ export function Header() {
                      <Image
                         src={IPFS_LOGO_URL}
                         alt="GotongKarya Logo"
-                        width={100}
-                        height={32}
-                        className="h-8 w-auto rounded"
-                        data-ai-hint="batik logo"
+                        width={150} // Adjusted width
+                        height={40} // Adjusted height
+                        className="h-10 w-auto"
+                        data-ai-hint="company logo"
                       />
                    </Link>
                   <SheetClose asChild>
