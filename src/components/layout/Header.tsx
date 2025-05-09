@@ -9,6 +9,8 @@ import { usePathname } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"; 
 import { cn } from "@/lib/utils";
+import Image from "next/image";
+import { IPFS_LOGO_URL } from "@/lib/constants";
 
 const navLinks = [
   { href: "/campaigns", label: "Campaigns" },
@@ -71,7 +73,7 @@ export function Header() {
   );
 
   const LogoComponent = () => (
-    <span className="text-2xl font-bold text-primary tracking-tight">
+     <span className="text-2xl font-bold text-primary tracking-tight">
       GotongKarya
     </span>
   );
@@ -84,9 +86,7 @@ export function Header() {
         </Link>
         
         <div className="flex-1 items-center justify-center hidden md:flex">
-           <span className="text-sm text-muted-foreground italic">
-            Decentralized Funding, Creators and Fans Win
-          </span>
+          {/* Removed "Decentralized Funding, Creators and Fans Win" text */}
         </div>
 
         <div className="hidden md:flex items-center gap-6">
