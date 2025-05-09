@@ -73,13 +73,12 @@ export function Header() {
           <Image
             src={IPFS_LOGO_URL}
             alt="GotongKarya Logo"
-            width={150} // Adjusted width for the new logo aspect ratio
-            height={40} // Adjusted height for the new logo aspect ratio
-            className="h-10 w-auto" // Maintain height and allow auto width
+            width={834} // Use natural image width
+            height={222} // Use natural image height
+            className="h-10 w-auto" // CSS controls display size (40px height, auto width)
             data-ai-hint="company logo"
             priority
           />
-          {/* Removed the text span: <span className="font-bold text-xl hidden sm:inline-block text-primary">GotongKarya</span> */}
         </Link>
         
         <div className="flex-1 items-center justify-center hidden md:flex">
@@ -108,9 +107,9 @@ export function Header() {
                      <Image
                         src={IPFS_LOGO_URL}
                         alt="GotongKarya Logo"
-                        width={150} // Adjusted width
-                        height={40} // Adjusted height
-                        className="h-10 w-auto"
+                        width={834} // Use natural image width
+                        height={222} // Use natural image height
+                        className="h-10 w-auto" // CSS controls display size
                         data-ai-hint="company logo"
                       />
                    </Link>
