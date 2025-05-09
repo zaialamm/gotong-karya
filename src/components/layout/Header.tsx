@@ -3,14 +3,14 @@
 
 import Link from "next/link";
 import { WalletConnectButton } from "./WalletConnectButton";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogIn, WalletCards } from "lucide-react"; // Added LogIn, WalletCards for placeholder
 import { useState, useEffect } from "react";
 import { usePathname } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"; 
 import { cn } from "@/lib/utils";
-import Image from "next/image";
-import { IPFS_LOGO_URL } from "@/lib/constants";
+// import Image from "next/image"; // Image component removed
+// import { IPFS_LOGO_URL } from "@/lib/constants"; // IPFS_LOGO_URL removed
 
 const navLinks = [
   { href: "/campaigns", label: "Campaigns" },
@@ -29,6 +29,7 @@ export function Header() {
   }, []);
 
   useEffect(() => {
+    // Ensure mobile menu closes on navigation, only after initial mount
     if (hasMounted) { 
       setIsMobileMenuOpen(false); 
     }
@@ -42,28 +43,21 @@ export function Header() {
     )}>
       {navLinks.map((link) => {
         const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(link.href));
+        const commonLinkClass = cn(
+          "font-medium transition-colors hover:text-primary",
+          isActive ? "text-primary" : "text-foreground/80",
+          isMobile ? "text-lg" : "text-sm"
+        );
+        
         return (
           isMobile ? (
             <SheetClose asChild key={link.href}>
-              <Link
-                href={link.href}
-                className={cn(
-                  "text-lg font-medium transition-colors hover:text-primary",
-                  isActive ? "text-primary" : "text-foreground/80"
-                )}
-              >
+              <Link href={link.href} className={commonLinkClass}>
                 {link.label}
               </Link>
             </SheetClose>
           ) : (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "text-sm font-medium transition-colors hover:text-primary",
-                isActive ? "text-primary" : "text-foreground/80"
-              )}
-            >
+            <Link key={link.href} href={link.href} className={commonLinkClass}>
               {link.label}
             </Link>
           )
@@ -78,6 +72,21 @@ export function Header() {
     </span>
   );
 
+  const WalletPlaceholder = ({isMobile = false}: {isMobile?: boolean}) => (
+    <Button 
+        variant="outline" 
+        disabled 
+        className={cn(
+            "bg-primary/10 hover:bg-primary/20 text-primary-foreground/80 border-primary/30",
+            isMobile && "w-full"
+        )}
+    >
+        <WalletCards className="mr-2 h-4 w-4 animate-pulse" />
+        Checking Wallet...
+    </Button>
+  );
+
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -91,7 +100,7 @@ export function Header() {
 
         <div className="hidden md:flex items-center gap-6">
           <NavLinksComponent isMobile={false} />
-          <WalletConnectButton />
+          {hasMounted ? <WalletConnectButton /> : <WalletPlaceholder />}
         </div>
 
         <div className="md:hidden">
@@ -117,7 +126,7 @@ export function Header() {
                 </div>
                 <NavLinksComponent isMobile={true} />
                 <div className="mt-auto pt-8">
-                  <WalletConnectButton />
+                  {hasMounted ? <WalletConnectButton /> : <WalletPlaceholder isMobile={true} />}
                 </div>
               </div>
             </SheetContent>
