@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useState, useCallback, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { useState, useCallback, useEffect, createContext, useContext } from 'react';
 import { connectPhantomWallet, checkPhantomConnection } from '@/lib/web3';
 import { useToast } from '@/hooks/use-toast';
 
@@ -9,34 +10,53 @@ interface WalletState {
   address: string | null;
   isConnected: boolean;
   connect: () => Promise<void>;
-  disconnect: () => Promise<void>; // Changed to Promise
+  disconnect: () => Promise<void>;
   loading: boolean;
 }
 
 const WALLET_ADDRESS_KEY = 'gotongkarya_wallet_address';
 
+const WalletContext = createContext<WalletState | undefined>(undefined);
+
 export const useWallet = (): WalletState => {
+  const context = useContext(WalletContext);
+  if (context === undefined) {
+    throw new Error('useWallet must be used within a WalletProvider');
+  }
+  return context;
+};
+
+export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [address, setAddress] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true); // Initialize loading to true
   const { toast } = useToast();
 
-  // Check for persisted address or silent reconnection on mount
+  const [phantomProvider, setPhantomProvider] = useState<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.phantom?.solana) {
+      setPhantomProvider(window.phantom.solana);
+    }
+  }, []);
+
   useEffect(() => {
     const attemptAutoConnect = async () => {
+      if (typeof window === 'undefined') {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       const storedAddress = localStorage.getItem(WALLET_ADDRESS_KEY);
       if (storedAddress) {
-        // Try to validate or re-establish connection silently
         try {
           const connection = await checkPhantomConnection();
           if (connection && connection.address === storedAddress) {
             setAddress(storedAddress);
             console.log(`Restored and verified wallet session for address: ${storedAddress}`);
           } else {
-            // Stored address might be stale or Phantom disconnected
             localStorage.removeItem(WALLET_ADDRESS_KEY);
             setAddress(null);
-             console.log(`Cleared stale wallet session for address: ${storedAddress}`);
+            console.log(`Cleared stale wallet session for address: ${storedAddress}`);
           }
         } catch (error) {
           console.warn("Failed to auto-connect on mount:", error);
@@ -50,11 +70,11 @@ export const useWallet = (): WalletState => {
     attemptAutoConnect();
   }, []);
 
-
   const connect = useCallback(async () => {
+    if (typeof window === 'undefined') return;
     setLoading(true);
     try {
-      const connection = await connectPhantomWallet(); // This will now throw specific errors
+      const connection = await connectPhantomWallet();
       if (connection && connection.address) {
         setAddress(connection.address);
         localStorage.setItem(WALLET_ADDRESS_KEY, connection.address);
@@ -66,7 +86,7 @@ export const useWallet = (): WalletState => {
       }
     } catch (error: any) {
       console.error("Failed to connect wallet:", error);
-      setAddress(null); // Ensure address is cleared on error
+      setAddress(null);
       localStorage.removeItem(WALLET_ADDRESS_KEY);
 
       let description = "An unknown error occurred. Please try again.";
@@ -89,21 +109,15 @@ export const useWallet = (): WalletState => {
   }, [toast]);
 
   const disconnect = useCallback(async () => {
+    if (typeof window === 'undefined') return;
     setLoading(true);
     try {
-      const provider = window.phantom?.solana;
-      if (provider?.isPhantom && provider.publicKey) { // Check if connected before trying to disconnect
-        await provider.disconnect();
+      if (phantomProvider?.isPhantom && phantomProvider.publicKey) {
+        await phantomProvider.disconnect();
         console.log("Phantom wallet disconnect method called.");
       }
     } catch (error) {
       console.error("Error during Phantom disconnect:", error);
-      // Toast an error if disconnect fails, though user might not expect it.
-      // toast({
-      //   title: "Disconnect Error",
-      //   description: "Could not disconnect from Phantom properly, but local state cleared.",
-      //   variant: "destructive",
-      // });
     } finally {
       setAddress(null);
       localStorage.removeItem(WALLET_ADDRESS_KEY);
@@ -115,62 +129,65 @@ export const useWallet = (): WalletState => {
       });
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, phantomProvider]);
 
-  // Listen for account changes and disconnections from Phantom UI
   useEffect(() => {
-    const provider = window.phantom?.solana;
-    if (provider?.on) {
-      const handleAccountChanged = (publicKey: { toString: () => string } | null) => {
-        if (publicKey) {
-          const newAddress = publicKey.toString();
-          setAddress(newAddress);
-          localStorage.setItem(WALLET_ADDRESS_KEY, newAddress);
-          console.log('Phantom account changed to:', newAddress);
-          toast({
-            title: "Account Switched",
-            description: `Connected to account: ${newAddress.slice(0,6)}...${newAddress.slice(-4)}`,
-            variant: "default",
-          });
-        } else {
-          // This typically means the user disconnected the dapp from the Phantom UI
-          setAddress(null);
-          localStorage.removeItem(WALLET_ADDRESS_KEY);
-          console.log('Phantom account disconnected via wallet UI (accountChanged gave null).');
-          toast({
-            title: "Wallet Disconnected",
-            description: "Disconnected from Phantom Wallet via wallet interface.",
-            variant: "default",
-          });
-        }
-      };
+    if (!phantomProvider?.on) {
+      return;
+    }
 
-      const handleDisconnectEvent = () => {
+    const handleAccountChanged = (publicKey: { toString: () => string } | null) => {
+      if (typeof window === 'undefined') return;
+      if (publicKey) {
+        const newAddress = publicKey.toString();
+        setAddress(newAddress);
+        localStorage.setItem(WALLET_ADDRESS_KEY, newAddress);
+        console.log('Phantom account changed to:', newAddress);
+        toast({
+          title: "Account Switched",
+          description: `Connected to account: ${newAddress.slice(0,6)}...${newAddress.slice(-4)}`,
+          variant: "default",
+        });
+      } else {
         setAddress(null);
         localStorage.removeItem(WALLET_ADDRESS_KEY);
-        console.log('Phantom "disconnect" event received.');
+        console.log('Phantom account disconnected via wallet UI (accountChanged gave null).');
         toast({
-            title: "Wallet Disconnected",
-            description: "Your wallet session has ended.",
-            variant: "default",
+          title: "Wallet Disconnected",
+          description: "Disconnected from Phantom Wallet via wallet interface.",
+          variant: "default",
         });
-      };
-      
-      provider.on('accountChanged', handleAccountChanged);
-      provider.on('disconnect', handleDisconnectEvent);
+      }
+    };
 
-      return () => {
-        provider.removeListener?.('accountChanged', handleAccountChanged);
-        provider.removeListener?.('disconnect', handleDisconnectEvent);
-      };
-    }
-  }, [toast]);
+    const handleDisconnectEvent = () => {
+      if (typeof window === 'undefined') return;
+      setAddress(null);
+      localStorage.removeItem(WALLET_ADDRESS_KEY);
+      console.log('Phantom "disconnect" event received.');
+      toast({
+          title: "Wallet Disconnected",
+          description: "Your wallet session has ended.",
+          variant: "default",
+      });
+    };
+    
+    phantomProvider.on('accountChanged', handleAccountChanged);
+    phantomProvider.on('disconnect', handleDisconnectEvent);
 
-  return {
+    return () => {
+      phantomProvider.removeListener?.('accountChanged', handleAccountChanged);
+      phantomProvider.removeListener?.('disconnect', handleDisconnectEvent);
+    };
+  }, [toast, phantomProvider]);
+
+  const value = {
     address,
     isConnected: !!address,
     connect,
     disconnect,
     loading,
   };
+
+  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 };

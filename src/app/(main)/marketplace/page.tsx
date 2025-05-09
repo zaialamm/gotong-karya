@@ -1,6 +1,5 @@
-
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TradeForm } from "@/components/marketplace/TradeForm";
 import { TradeHistory } from "@/components/marketplace/TradeHistory";
 import { UserTokenBalances } from "@/components/marketplace/UserTokenBalances";
@@ -134,4 +133,3 @@ export default function MarketplacePage() {
     </div>
   );
 }
-
