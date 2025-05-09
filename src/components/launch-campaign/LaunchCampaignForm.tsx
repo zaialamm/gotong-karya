@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -16,7 +15,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card as ShadCNCard, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { launchNewCampaign } from "@/lib/web3"; // Mock function
 import { Rocket } from "lucide-react";
@@ -68,7 +67,7 @@ export function LaunchCampaignForm() {
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-xl">
+    <ShadCNCard className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl flex items-center text-primary">
           <Rocket className="mr-2 h-6 w-6" />
@@ -160,10 +159,10 @@ export function LaunchCampaignForm() {
             */}
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Launching..." : "Launch Campaign"}
-            </AppButton>
+            </Button>
           </form>
         </Form>
       </CardContent>
-    </Card>
+    </ShadCNCard>
   );
 }
