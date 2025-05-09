@@ -16,47 +16,85 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card as ShadCNCard, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { launchNewCampaign } from "@/lib/web3"; // Mock function
-import { Rocket } from "lucide-react";
+import { SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
+import { Rocket, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(1000),
-  fundingGoalSOL: z.coerce.number().positive("Funding goal must be a positive number."),
+  fundingGoalIDR: z.coerce.number().positive("Funding goal in IDR must be a positive number.").min(100000, `Minimum funding goal is ${IDR_CURRENCY_SYMBOL} 100,000.`),
   tokenTicker: z.string().min(2, "Token ticker must be 2-5 characters.").max(5).regex(/^[A-Z0-9]+$/, "Ticker must be uppercase letters/numbers."),
   tokenName: z.string().min(5, "Token name must be at least 5 characters.").max(50),
-  // metadata field is mentioned, can be combined with description or be a separate JSON field if complex
 });
 
 type LaunchCampaignFormValues = z.infer<typeof formSchema>;
 
 export function LaunchCampaignForm() {
   const { toast } = useToast();
+  const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("");
+
   const form = useForm<LaunchCampaignFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       projectName: "",
       description: "",
-      fundingGoalSOL: 0,
+      fundingGoalIDR: 0,
       tokenTicker: "",
       tokenName: "",
     },
   });
 
+  const fundingGoalIDRValue = form.watch("fundingGoalIDR");
+
+  useEffect(() => {
+    if (fundingGoalIDRValue > 0 && SOL_TO_IDR_RATE > 0) {
+      const calculatedSOL = fundingGoalIDRValue / SOL_TO_IDR_RATE;
+      setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}`);
+    } else if (fundingGoalIDRValue === 0) {
+      setSolEquivalentDisplay("Enter IDR amount to see SOL equivalent.");
+    } 
+    else {
+      setSolEquivalentDisplay("Invalid IDR amount.");
+    }
+  }, [fundingGoalIDRValue]);
+
+
   async function onSubmit(values: LaunchCampaignFormValues) {
     try {
-      // Log to console as requested
-      console.log("Campaign form submitted:", values);
-      const result = await launchNewCampaign(values); // Mock API call
+      const fundingGoalSOL = values.fundingGoalIDR / SOL_TO_IDR_RATE;
+      if (fundingGoalSOL <= 0) {
+        toast({
+          title: "Invalid Amount",
+          description: "The calculated SOL amount is too small. Please increase the IDR funding goal.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const campaignDataForApi = {
+        projectName: values.projectName,
+        description: values.description,
+        fundingGoalSOL: parseFloat(fundingGoalSOL.toFixed(4)), // Ensure it's a number with reasonable precision
+        tokenTicker: values.tokenTicker,
+        tokenName: values.tokenName,
+      };
+      
+      console.log("Campaign form submitted (values in IDR):", values);
+      console.log("Campaign data for API (goal in SOL):", campaignDataForApi);
+      
+      const result = await launchNewCampaign(campaignDataForApi);
       
       toast({
         title: "Campaign Creation Initiated!",
-        description: result.message, // `Campaign created, ticker: ${values.tokenTicker}`
+        description: `${result.message} Funding goal: ${values.fundingGoalIDR.toLocaleString()} ${IDR_CURRENCY_SYMBOL} (~${campaignDataForApi.fundingGoalSOL} ${SOL_CURRENCY_SYMBOL}).`,
         variant: "default",
+        duration: 7000,
       });
-      form.reset(); // Reset form after successful submission
+      form.reset(); 
     } catch (error) {
       console.error("Error launching campaign:", error);
       toast({
@@ -68,7 +106,7 @@ export function LaunchCampaignForm() {
   }
 
   return (
-    <ShadCNCard className="w-full max-w-2xl mx-auto shadow-xl">
+    <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl flex items-center text-primary">
           <Rocket className="mr-2 h-6 w-6" />
@@ -112,14 +150,18 @@ export function LaunchCampaignForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
-                name="fundingGoalSOL"
+                name="fundingGoalIDR"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Funding Goal (SOL)</FormLabel>
+                    <FormLabel>Funding Goal ({IDR_CURRENCY_SYMBOL})</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="E.g., 100" {...field} />
+                      <Input type="number" placeholder={`E.g., ${ (100 * SOL_TO_IDR_RATE).toLocaleString()}`} {...field} />
                     </FormControl>
-                    <FormDescription>The amount of SOL you aim to raise.</FormDescription>
+                    <FormDescription>The amount of {IDR_CURRENCY_SYMBOL} you aim to raise.</FormDescription>
+                    <div className="text-xs text-muted-foreground mt-1 flex items-center pt-1">
+                        <RefreshCw className="mr-1.5 h-3 w-3 text-primary"/>
+                        <span>{solEquivalentDisplay}</span>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -153,17 +195,12 @@ export function LaunchCampaignForm() {
                   </FormItem>
                 )}
               />
-            {/* For metadata, if it's simple text, can be part of description.
-                If it's structured (e.g. JSON for token standard), a Textarea for JSON input could be added.
-                The request was "metadata e.g., ‘Create Jumbo Animation Film Token’", which is like a token name.
-                I've added `tokenName` field above. Let's assume this covers the "metadata" for now.
-            */}
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Launching..." : "Launch Campaign"}
             </Button>
           </form>
         </Form>
       </CardContent>
-    </ShadCNCard>
+    </Card>
   );
 }
