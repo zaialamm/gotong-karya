@@ -1,9 +1,8 @@
+
 "use client";
 
 import Link from "next/link";
-import NextImage from "next/image"; // Renamed import to avoid conflict
 import { WalletConnectButton } from "./WalletConnectButton";
-import { IPFS_LOGO_URL } from "@/lib/constants";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { usePathname } from 'next/navigation';
@@ -28,10 +27,10 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    if (hasMounted) { // Only run this effect after mounting
-      setIsMobileMenuOpen(false); // Close mobile menu on route change
+    if (hasMounted) { 
+      setIsMobileMenuOpen(false); 
     }
-  }, [pathname, hasMounted]); // Added hasMounted to dependency array
+  }, [pathname, hasMounted]); 
 
 
   const NavLinksComponent = ({ isMobile }: { isMobile: boolean }) => (
@@ -71,28 +70,17 @@ export function Header() {
     </nav>
   );
 
-  const imagePlaceholder = (
-    <div
-      className="h-10 w-auto bg-transparent" // Matches className of NextImage for consistent layout
-      style={{ aspectRatio: '834 / 222' }} // Ensures correct aspect ratio for w-auto
-    />
+  const LogoComponent = () => (
+    <span className="text-2xl font-bold text-primary tracking-tight">
+      GotongKarya
+    </span>
   );
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/campaigns" className="flex items-center gap-2 mr-4">
-          {hasMounted ? (
-            <NextImage
-              src={IPFS_LOGO_URL}
-              alt="GotongKarya Logo"
-              width={834} 
-              height={222} 
-              className="h-10 w-auto" 
-              data-ai-hint="company logo"
-              // removed priority prop
-            />
-          ) : imagePlaceholder }
+          <LogoComponent />
         </Link>
         
         <div className="flex-1 items-center justify-center hidden md:flex">
@@ -118,16 +106,7 @@ export function Header() {
               <div className="flex flex-col h-full">
                 <div className="flex justify-between items-center mb-8">
                    <Link href="/campaigns" className="flex items-center gap-2">
-                    {hasMounted ? (
-                       <NextImage
-                          src={IPFS_LOGO_URL}
-                          alt="GotongKarya Logo"
-                          width={834} 
-                          height={222} 
-                          className="h-10 w-auto" 
-                          data-ai-hint="company logo"
-                        />
-                    ) : imagePlaceholder }
+                     <LogoComponent />
                    </Link>
                   <SheetClose asChild>
                      <Button variant="ghost" size="icon">
