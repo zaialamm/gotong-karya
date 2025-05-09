@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -26,10 +25,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import type { TokenInfo, UserTokenBalance } from "@/types";
-import { TOKENS_DATA, USER_BALANCES_DATA, MARKETPLACE_FEE_PERCENTAGE, SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE } from "@/lib/constants";
+import { TOKENS_DATA, USER_BALANCES_DATA, MARKETPLACE_FEE_PERCENTAGE, SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import { tradeTokens } from "@/lib/web3"; // Mock function
 import { ArrowRightLeft, ShoppingCart, Banknote } from "lucide-react";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TradeFormProps {
   initialTokenTicker?: string;
@@ -51,6 +52,8 @@ export function TradeForm({ initialTokenTicker, initialTradeType = "buy", onTrad
     initialTokenTicker ? TOKENS_DATA.find(t => t.ticker === initialTokenTicker) : undefined
   );
   const [userBalances, setUserBalances] = useState<UserTokenBalance[]>(USER_BALANCES_DATA); // Mock, can be context/prop
+  const { effectiveRate, isLoading: isLoadingRate } = useSolToIdrRate();
+
 
   const form = useForm<TradeFormValues>({
     resolver: zodResolver(formSchema),
@@ -200,7 +203,7 @@ export function TradeForm({ initialTokenTicker, initialTradeType = "buy", onTrad
               <span>{totalSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span>
             </div>
             <div className="text-xs text-muted-foreground text-right">
-              (≈ {(totalSOL * SOL_TO_IDR_RATE).toLocaleString()} {IDR_CURRENCY_SYMBOL})
+             {isLoadingRate ? <Skeleton className="h-3 w-24 inline-block" /> :  `(≈ ${(totalSOL * effectiveRate).toLocaleString()} ${IDR_CURRENCY_SYMBOL})`}
             </div>
           </div>
         )}

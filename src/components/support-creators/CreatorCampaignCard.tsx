@@ -1,16 +1,17 @@
-
 "use client";
 
 import { useState } from "react";
 import Image from "next/image";
 import type { Campaign } from "@/types";
-import { SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
+import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { FundModal } from "./FundModal";
 import { Badge } from "@/components/ui/badge";
 import { HandCoins, Users, Tag, CalendarDays } from "lucide-react";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CreatorCampaignCardProps {
   campaign: Campaign;
@@ -18,10 +19,11 @@ interface CreatorCampaignCardProps {
 
 export function CreatorCampaignCard({ campaign }: CreatorCampaignCardProps) {
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
+  const { effectiveRate, isLoading: isLoadingRate } = useSolToIdrRate();
 
   const { projectName, fundingGoalSOL, raisedSOL, status, imageUrl, description, tokenTicker, endDate } = campaign;
   const progressPercentage = (raisedSOL / fundingGoalSOL) * 100;
-  const raisedIDR = raisedSOL * SOL_TO_IDR_RATE;
+  const raisedIDR = raisedSOL * effectiveRate;
 
   return (
     <>
@@ -48,7 +50,7 @@ export function CreatorCampaignCard({ campaign }: CreatorCampaignCardProps) {
           <p className="line-clamp-3 mb-3">{description}</p>
           <div className="space-y-1 text-xs mb-2">
             <div className="flex justify-between">
-              <span>Raised: {raisedSOL.toLocaleString()} {SOL_CURRENCY_SYMBOL} ({raisedIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>
+              <span>Raised: {raisedSOL.toLocaleString()} {SOL_CURRENCY_SYMBOL} {isLoadingRate && raisedSOL > 0 ? <Skeleton className="h-3 w-16 inline-block ml-1" /> : `(${raisedIDR.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`}</span>
             </div>
             <div className="flex justify-between">
               <span>Goal: {fundingGoalSOL.toLocaleString()} {SOL_CURRENCY_SYMBOL}</span>

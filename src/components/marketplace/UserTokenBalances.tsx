@@ -1,13 +1,15 @@
-
 "use client";
 
 import type { UserTokenBalance, TokenInfo } from "@/types";
-import { USER_BALANCES_DATA, TOKENS_DATA, SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE } from "@/lib/constants";
+import { USER_BALANCES_DATA, TOKENS_DATA, SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WalletCards, Package } from "lucide-react";
 import Image from "next/image";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
+import { Skeleton } from "@/components/ui/skeleton";
+
 
 interface UserTokenBalancesProps {
   balances?: UserTokenBalance[]; // Optional prop
@@ -20,11 +22,12 @@ export function UserTokenBalances({
     tokens = TOKENS_DATA, 
     maxHeight = "300px" 
 }: UserTokenBalancesProps) {
+  const { effectiveRate, isLoading: isLoadingRate } = useSolToIdrRate();
 
   const enrichedBalances = balances.map(balance => {
     const tokenInfo = tokens.find(t => t.ticker === balance.tokenTicker);
     const valueSOL = tokenInfo?.currentPriceSOL ? balance.amount * tokenInfo.currentPriceSOL : 0;
-    const valueIDR = valueSOL * SOL_TO_IDR_RATE;
+    const valueIDR = valueSOL * effectiveRate;
     return {
       ...balance,
       tokenName: tokenInfo?.name || balance.tokenTicker,
@@ -70,7 +73,9 @@ export function UserTokenBalances({
                     </TableCell>
                     <TableCell className="text-right">{balance.amount.toLocaleString()}</TableCell>
                     <TableCell className="text-right">{balance.valueSOL.toFixed(4)}</TableCell>
-                    <TableCell className="text-right hidden sm:table-cell">{balance.valueIDR.toLocaleString()}</TableCell>
+                    <TableCell className="text-right hidden sm:table-cell">
+                      {isLoadingRate && balance.valueSOL > 0 ? <Skeleton className="h-4 w-20 inline-block" /> : balance.valueIDR.toLocaleString()}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

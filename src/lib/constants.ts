@@ -1,7 +1,6 @@
-
 import type { Campaign, Creator, TokenInfo, UserTokenBalance, Trade } from '@/types';
 
-export const SOL_TO_IDR_RATE = 800000;
+export const FALLBACK_SOL_TO_IDR_RATE = 800000; // Renamed from SOL_TO_IDR_RATE
 export const SOL_TO_USD_RATE = 200;
 export const MARKETPLACE_FEE_PERCENTAGE = 0.007; // 0.7%
 

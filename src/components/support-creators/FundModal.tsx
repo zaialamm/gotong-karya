@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -17,9 +16,10 @@ import { Label } from "@/components/ui/label";
 import type { Campaign } from "@/types";
 import { fundCampaign } from "@/lib/web3"; // Mock function
 import { useToast } from "@/hooks/use-toast";
-import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE as FALLBACK_SOL_TO_IDR_RATE } from "@/lib/constants";
+import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Send, Sparkles, RefreshCw } from "lucide-react";
 import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 
 interface FundModalProps {
   campaign: Campaign;
@@ -28,54 +28,34 @@ interface FundModalProps {
 }
 
 export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
-  const [numericAmountIDR, setNumericAmountIDR] = useState<number>(80000); // Store as number
+  const [numericAmountIDR, setNumericAmountIDR] = useState<number>(80000); 
   const [isFunding, setIsFunding] = useState(false);
   const { toast } = useToast();
-  
-  const [liveSolToIdrRate, setLiveSolToIdrRate] = useState<number | null>(null);
-  const [isLoadingRate, setIsLoadingRate] = useState<boolean>(true);
-  const [rateError, setRateError] = useState<string | null>(null);
   const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
 
-  const effectiveSolToIdrRate = liveSolToIdrRate ?? FALLBACK_SOL_TO_IDR_RATE;
+  const {
+    liveRate: liveSolToIdrRate,
+    isLoading: isLoadingRate,
+    error: rateError,
+    effectiveRate,
+    FALLBACK_SOL_TO_IDR_RATE: hookFallbackRate
+  } = useSolToIdrRate();
 
-  useEffect(() => {
-    if (!isOpen) return; 
-
-    async function fetchRate() {
-      setIsLoadingRate(true);
-      setRateError(null);
-      try {
-        const response = await fetch('/api/exchange-rate');
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Failed to fetch exchange rate details' }));
-          throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
-        }
-        const data = await response.json();
-        if (data.rate && typeof data.rate === 'number') {
-          setLiveSolToIdrRate(data.rate);
-        } else {
-          throw new Error(data.error || 'Rate not found or invalid in API response');
-        }
-      } catch (error) {
-        console.error("Error fetching SOL/IDR rate in FundModal:", error);
-        setRateError((error as Error).message);
-        setLiveSolToIdrRate(null); 
-      } finally {
-        setIsLoadingRate(false);
-      }
-    }
-    fetchRate();
-  }, [isOpen]);
 
   useEffect(() => {
     const currentNumericAmount = typeof numericAmountIDR === 'number' && !isNaN(numericAmountIDR) ? numericAmountIDR : 0;
     
+    if (!isOpen) {
+        // Optionally reset display when modal is not open or simply return
+        // setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
+        return;
+    }
+    
     if (isLoadingRate) {
         setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
     } else if (rateError) {
-        const calculatedSOL = (currentNumericAmount > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (currentNumericAmount / FALLBACK_SOL_TO_IDR_RATE) : 0;
-        const displayRate = `(Fallback: 1 ${SOL_CURRENCY_SYMBOL} = ${FALLBACK_SOL_TO_IDR_RATE.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
+        const calculatedSOL = (currentNumericAmount > 0 && hookFallbackRate > 0) ? (currentNumericAmount / hookFallbackRate) : 0;
+        const displayRate = `(Fallback: 1 ${SOL_CURRENCY_SYMBOL} = ${hookFallbackRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
         if (calculatedSOL > 0) {
             setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
         } else {
@@ -88,27 +68,27 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
         } else {
             setSolEquivalentDisplay(`Enter ${IDR_CURRENCY_SYMBOL} amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
         }
-    } else {
-        const calculatedSOL = (currentNumericAmount > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (currentNumericAmount / FALLBACK_SOL_TO_IDR_RATE) : 0;
+    } else { // Fallback (liveRate is null, no error, not loading)
+        const calculatedSOL = (currentNumericAmount > 0 && hookFallbackRate > 0) ? (currentNumericAmount / hookFallbackRate) : 0;
         if (calculatedSOL > 0) {
-            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate)`);
+            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate: ${hookFallbackRate.toLocaleString()})`);
         } else {
             setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
         }
     }
-  }, [numericAmountIDR, liveSolToIdrRate, isLoadingRate, rateError, FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
+  }, [numericAmountIDR, liveSolToIdrRate, isLoadingRate, rateError, hookFallbackRate, isOpen, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
 
   const handleFund = async () => {
     if (isNaN(numericAmountIDR) || numericAmountIDR <= 0) {
       toast({ title: "Invalid Amount", description: `Please enter a valid positive ${IDR_CURRENCY_SYMBOL} amount.`, variant: "destructive" });
       return;
     }
-    if (effectiveSolToIdrRate <= 0) {
-      toast({ title: "Configuration Error", description: `${SOL_CURRENCY_SYMBOL} to ${IDR_CURRENCY_SYMBOL} rate is not configured correctly or is zero.`, variant: "destructive" });
+    if (effectiveRate <= 0) {
+      toast({ title: "Configuration Error", description: `${SOL_CURRENCY_SYMBOL} to ${IDR_CURRENCY_SYMBOL} rate is not configured correctly, is zero, or not loaded.`, variant: "destructive" });
       return;
     }
 
-    const solAmountToFund = numericAmountIDR / effectiveSolToIdrRate;
+    const solAmountToFund = numericAmountIDR / effectiveRate;
     if (solAmountToFund <= 0) {
         toast({ title: "Invalid Amount", description: `Calculated ${SOL_CURRENCY_SYMBOL} amount is too small to fund. Please increase the ${IDR_CURRENCY_SYMBOL} amount.`, variant: "destructive" });
         return;
@@ -116,7 +96,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
 
     setIsFunding(true);
     try {
-      console.log(`Funding with ${solAmountToFund.toFixed(4)} SOL (from ${numericAmountIDR} IDR at rate ${effectiveSolToIdrRate})`);
+      console.log(`Funding with ${solAmountToFund.toFixed(4)} SOL (from ${numericAmountIDR} IDR at rate ${effectiveRate})`);
       const result = await fundCampaign(campaign.id, solAmountToFund, "SOL");
       toast({
         title: "Funding Successful!",
@@ -133,15 +113,17 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
     }
   };
   
-  const solEquivalentForButton = !isNaN(numericAmountIDR) && numericAmountIDR > 0 && effectiveSolToIdrRate > 0
-    ? (numericAmountIDR / effectiveSolToIdrRate)
+  const solEquivalentForButton = !isNaN(numericAmountIDR) && numericAmountIDR > 0 && effectiveRate > 0
+    ? (numericAmountIDR / effectiveRate)
     : 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
       onOpenChange(open);
-      if (!open) { // Reset amount when modal closes
+      if (!open) { 
         setNumericAmountIDR(80000);
+        // Reset display when modal closes if desired, or let useEffect handle it based on isOpen
+        // setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
       }
     }}>
       <DialogContent className="sm:max-w-md bg-card text-card-foreground">
@@ -166,9 +148,9 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
               value={formatToIDR(numericAmountIDR)}
               onChange={(e) => {
                 const val = parseFromIDR(e.target.value);
-                setNumericAmountIDR(val); // val can be NaN
+                setNumericAmountIDR(val); 
               }}
-              onBlur={(e) => { // Ensure correct formatting on blur
+              onBlur={(e) => { 
                 const val = parseFromIDR(e.target.value);
                 setNumericAmountIDR(val);
               }}

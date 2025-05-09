@@ -1,14 +1,15 @@
-
 "use client";
 
 import Image from "next/image";
 import type { Campaign } from "@/types";
-import { SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
+import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tag, Users, TrendingUp, CalendarDays, CheckCircle, AlertTriangle, XCircle, Hourglass } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate"; // Import the hook
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -16,9 +17,11 @@ interface CampaignCardProps {
 
 export function CampaignCard({ campaign }: CampaignCardProps) {
   const { projectName, creator, fundingGoalSOL, raisedSOL, status, imageUrl, description, endDate, tokenTicker } = campaign;
+  const { effectiveRate, isLoading: isLoadingRate } = useSolToIdrRate(); // Use the hook
+
   const progressPercentage = (raisedSOL / fundingGoalSOL) * 100;
-  const raisedIDR = raisedSOL * SOL_TO_IDR_RATE;
-  const goalIDR = fundingGoalSOL * SOL_TO_IDR_RATE;
+  const raisedIDR = raisedSOL * effectiveRate;
+  const goalIDR = fundingGoalSOL * effectiveRate;
 
   const getStatusBadge = () => {
     switch (status) {
@@ -67,7 +70,7 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
           </div>
           <div className="flex justify-between text-xs text-muted-foreground/80">
             <span></span>
-            <span>({raisedIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>
+            {isLoadingRate ? <Skeleton className="h-4 w-24 inline-block" /> : <span>({raisedIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>}
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Goal:</span>
@@ -75,7 +78,7 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
           </div>
            <div className="flex justify-between text-xs text-muted-foreground/80">
             <span></span>
-            <span>({goalIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>
+            {isLoadingRate ? <Skeleton className="h-4 w-24 inline-block" /> : <span>({goalIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>}
           </div>
         </div>
         <Progress value={progressPercentage} aria-label={`${progressPercentage.toFixed(0)}% funded`} className="w-full h-2.5" />

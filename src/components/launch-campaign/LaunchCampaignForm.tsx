@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -19,10 +18,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { launchNewCampaign } from "@/lib/web3"; // Mock function
-import { SOL_TO_IDR_RATE as FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
+import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Rocket, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
@@ -39,51 +39,28 @@ type LaunchCampaignFormValues = z.infer<typeof formSchema>;
 export function LaunchCampaignForm() {
   const { toast } = useToast();
   const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("Enter IDR amount to see SOL equivalent.");
-  const [liveSolToIdrRate, setLiveSolToIdrRate] = useState<number | null>(null);
-  const [isLoadingRate, setIsLoadingRate] = useState<boolean>(true);
-  const [rateError, setRateError] = useState<string | null>(null);
+  
+  const {
+    liveRate: liveSolToIdrRate,
+    isLoading: isLoadingRate,
+    error: rateError,
+    effectiveRate,
+    FALLBACK_SOL_TO_IDR_RATE: hookFallbackRate
+  } = useSolToIdrRate();
 
   const form = useForm<LaunchCampaignFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       projectName: "",
       description: "",
-      // fundingGoalIDR: 0, // Default to undefined to allow placeholder to show properly
+      // fundingGoalIDR: undefined, // Default to undefined to allow placeholder to show properly
       tokenTicker: "",
       tokenName: "",
     },
-    mode: "onChange", // Validate on change for better UX with formatted input
+    mode: "onChange",
   });
 
   const fundingGoalIDRValue = form.watch("fundingGoalIDR");
-  const effectiveSolToIdrRate = liveSolToIdrRate ?? FALLBACK_SOL_TO_IDR_RATE;
-
-  useEffect(() => {
-    async function fetchRate() {
-      setIsLoadingRate(true);
-      setRateError(null);
-      try {
-        const response = await fetch('/api/exchange-rate');
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Failed to fetch exchange rate details' }));
-          throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
-        }
-        const data = await response.json();
-        if (data.rate && typeof data.rate === 'number') {
-          setLiveSolToIdrRate(data.rate);
-        } else {
-          throw new Error(data.error || 'Rate not found or invalid in API response');
-        }
-      } catch (error) {
-        console.error("Error fetching SOL/IDR rate:", error);
-        setRateError((error as Error).message);
-        setLiveSolToIdrRate(null); 
-      } finally {
-        setIsLoadingRate(false);
-      }
-    }
-    fetchRate();
-  }, []);
 
   useEffect(() => {
     const numericFundingGoal = typeof fundingGoalIDRValue === 'number' && !isNaN(fundingGoalIDRValue) ? fundingGoalIDRValue : 0;
@@ -91,9 +68,9 @@ export function LaunchCampaignForm() {
     if (isLoadingRate) {
       setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
     } else if (rateError) {
-      const calculatedSOL = numericFundingGoal / FALLBACK_SOL_TO_IDR_RATE;
-      const displayRate = `(Fallback rate: 1 ${SOL_CURRENCY_SYMBOL} = ${FALLBACK_SOL_TO_IDR_RATE.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
-      if (numericFundingGoal > 0) {
+      const calculatedSOL = numericFundingGoal > 0 && hookFallbackRate > 0 ? numericFundingGoal / hookFallbackRate : 0;
+      const displayRate = `(Fallback rate: 1 ${SOL_CURRENCY_SYMBOL} = ${hookFallbackRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
+      if (calculatedSOL > 0) {
         setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
       } else {
         setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
@@ -106,29 +83,28 @@ export function LaunchCampaignForm() {
         setSolEquivalentDisplay(`Enter IDR amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
       }
     } else { 
-       const calculatedSOL = numericFundingGoal / FALLBACK_SOL_TO_IDR_RATE;
-       if (numericFundingGoal > 0) {
-        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate)`);
+       const calculatedSOL = numericFundingGoal > 0 && hookFallbackRate > 0 ? numericFundingGoal / hookFallbackRate : 0;
+       if (calculatedSOL > 0) {
+        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate: ${hookFallbackRate.toLocaleString()})`);
        } else {
         setSolEquivalentDisplay("Enter IDR amount to see SOL equivalent.");
        }
     }
-  }, [fundingGoalIDRValue, liveSolToIdrRate, isLoadingRate, rateError, FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
+  }, [fundingGoalIDRValue, liveSolToIdrRate, isLoadingRate, rateError, hookFallbackRate, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
 
 
   async function onSubmit(values: LaunchCampaignFormValues) {
-    if (effectiveSolToIdrRate <= 0) {
+    if (effectiveRate <= 0) {
        toast({
           title: "Rate Error",
-          description: "Cannot calculate SOL equivalent. Exchange rate is invalid.",
+          description: "Cannot calculate SOL equivalent. Exchange rate is invalid or not loaded.",
           variant: "destructive",
         });
         return;
     }
 
     try {
-      // values.fundingGoalIDR is already a number due to zod coercion
-      const fundingGoalSOL = values.fundingGoalIDR / effectiveSolToIdrRate;
+      const fundingGoalSOL = values.fundingGoalIDR / effectiveRate;
       if (fundingGoalSOL <= 0) {
         toast({
           title: "Invalid Amount",
@@ -147,7 +123,7 @@ export function LaunchCampaignForm() {
       };
       
       console.log("Campaign form submitted (values in IDR):", values);
-      console.log("Campaign data for API (goal in SOL):", campaignDataForApi, "using rate:", effectiveSolToIdrRate);
+      console.log("Campaign data for API (goal in SOL):", campaignDataForApi, "using rate:", effectiveRate);
       
       const result = await launchNewCampaign(campaignDataForApi);
       
@@ -220,13 +196,13 @@ export function LaunchCampaignForm() {
                     <FormControl>
                       <Input
                         type="text"
-                        placeholder={formatToIDR(100 * FALLBACK_SOL_TO_IDR_RATE)}
+                        placeholder={hookFallbackRate > 0 ? formatToIDR(100000) : "Enter amount"}
                         value={field.value === undefined || isNaN(field.value) ? '' : formatToIDR(field.value)}
                         onChange={(e) => {
                           const numericValue = parseFromIDR(e.target.value);
                           field.onChange(isNaN(numericValue) ? undefined : numericValue);
                         }}
-                        onBlur={(e) => { // Re-format and set numeric value on blur
+                        onBlur={(e) => { 
                            const numericValue = parseFromIDR(e.target.value);
                            field.onChange(isNaN(numericValue) ? undefined : numericValue);
                         }}

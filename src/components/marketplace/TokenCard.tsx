@@ -1,12 +1,13 @@
-
 "use client";
 
 import Image from "next/image";
 import type { TokenInfo } from "@/types";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { SOL_CURRENCY_SYMBOL, SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
+import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
 import { TrendingUp, Users, Tag } from "lucide-react";
+import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TokenCardProps {
   token: TokenInfo;
@@ -14,7 +15,8 @@ interface TokenCardProps {
 }
 
 export function TokenCard({ token, onTrade }: TokenCardProps) {
-  const priceIDR = token.currentPriceSOL ? token.currentPriceSOL * SOL_TO_IDR_RATE : 0;
+  const { effectiveRate, isLoading: isLoadingRate } = useSolToIdrRate();
+  const priceIDR = token.currentPriceSOL ? token.currentPriceSOL * effectiveRate : 0;
 
   return (
     <Card className="w-full overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col bg-card">
@@ -51,7 +53,7 @@ export function TokenCard({ token, onTrade }: TokenCardProps) {
               <span className="text-xs text-muted-foreground ml-1">/ token</span>
             </p>
             <p className="text-xs text-muted-foreground">
-              (≈ {priceIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})
+              {isLoadingRate ? <Skeleton className="h-3 w-20 inline-block" /> : `(≈ ${priceIDR.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`}
             </p>
           </div>
         )}
