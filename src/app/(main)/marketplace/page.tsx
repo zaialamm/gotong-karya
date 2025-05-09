@@ -5,26 +5,29 @@ import { TradeForm } from "@/components/marketplace/TradeForm";
 import { TradeHistory } from "@/components/marketplace/TradeHistory";
 import { UserTokenBalances } from "@/components/marketplace/UserTokenBalances";
 import { TokenCard } from "@/components/marketplace/TokenCard";
-import { TOKENS_DATA, TRADE_HISTORY_DATA, USER_BALANCES_DATA, MARKETPLACE_FEE_PERCENTAGE } from "@/lib/constants"; // For refreshing data
+import { TOKENS_DATA, TRADE_HISTORY_DATA, USER_BALANCES_DATA, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL, MARKETPLACE_FEE_PERCENTAGE } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, LineChart } from "lucide-react";
+import { RefreshCw, LineChart, Wallet } from "lucide-react";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@/components/ui/tabs"
+} from "@/components/ui/tabs";
+import { useWallet } from "@/hooks/use-wallet";
+import { WalletConnectButton } from "@/components/layout/WalletConnectButton";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export default function MarketplacePage() {
-  // These states are to simulate data refresh after a trade
-  // In a real app, this would come from a global state/backend
   const [tradeHistoryKey, setTradeHistoryKey] = useState(Date.now());
   const [balancesKey, setBalancesKey] = useState(Date.now());
   const [selectedTokenForTrade, setSelectedTokenForTrade] = useState<string | undefined>(undefined);
   const [tradeTypeForForm, setTradeTypeForForm] = useState<"buy" | "sell">("buy");
 
+  const { isConnected } = useWallet();
+
   const handleTradeSuccess = () => {
-    // Trigger re-render of components that use mock data by changing their key
     setTradeHistoryKey(Date.now());
     setBalancesKey(Date.now());
   };
@@ -32,13 +35,26 @@ export default function MarketplacePage() {
   const handleTokenCardTradeAction = (tokenTicker: string, tradeType: "buy" | "sell") => {
     setSelectedTokenForTrade(tokenTicker);
     setTradeTypeForForm(tradeType);
-    // Potentially scroll to the trade form or open it in a modal
     const tradeFormElement = document.getElementById("trade-form-section");
     if (tradeFormElement) {
         tradeFormElement.scrollIntoView({ behavior: "smooth" });
     }
   };
 
+  const ConnectWalletPrompt = () => (
+    <Card className="mt-6 text-center py-8">
+      <CardHeader className="items-center">
+        <Wallet className="h-12 w-12 text-primary mb-4" />
+        <CardTitle className="text-2xl">Connect Your Wallet</CardTitle>
+        <CardDescription className="text-md text-muted-foreground">
+          Please connect your wallet to view your token balances and trade history.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <WalletConnectButton />
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-8">
@@ -52,16 +68,23 @@ export default function MarketplacePage() {
       </section>
 
       <Tabs defaultValue="trade" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
+        <TabsList className={cn(
+            "grid w-full mb-6",
+            isConnected ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"
+          )}>
           <TabsTrigger value="trade">Trade Tokens</TabsTrigger>
           <TabsTrigger value="tokens">Browse Tokens</TabsTrigger>
-          <TabsTrigger value="balances">Your Balances</TabsTrigger>
-          <TabsTrigger value="history">Trade History</TabsTrigger>
+          {isConnected && (
+            <>
+              <TabsTrigger value="balances">Your Balances</TabsTrigger>
+              <TabsTrigger value="history">Trade History</TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="trade" id="trade-form-section">
           <TradeForm 
-            key={`tradeform-${selectedTokenForTrade}-${tradeTypeForForm}`} // Re-render if selected token changes
+            key={`tradeform-${selectedTokenForTrade}-${tradeTypeForForm}`} 
             initialTokenTicker={selectedTokenForTrade} 
             initialTradeType={tradeTypeForForm}
             onTradeSuccess={handleTradeSuccess} 
@@ -77,11 +100,11 @@ export default function MarketplacePage() {
         </TabsContent>
 
         <TabsContent value="balances">
-           <UserTokenBalances key={balancesKey} />
+           {isConnected ? <UserTokenBalances key={balancesKey} /> : <ConnectWalletPrompt />}
         </TabsContent>
         
         <TabsContent value="history">
-            <TradeHistory key={tradeHistoryKey} />
+            {isConnected ? <TradeHistory key={tradeHistoryKey} /> : <ConnectWalletPrompt />}
         </TabsContent>
       </Tabs>
 
@@ -111,3 +134,4 @@ export default function MarketplacePage() {
     </div>
   );
 }
+
