@@ -7,9 +7,24 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label"; // Keep for RadioGroup Label
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import type { TokenInfo, UserTokenBalance } from "@/types";
 import { TOKENS_DATA, USER_BALANCES_DATA, MARKETPLACE_FEE_PERCENTAGE, SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
@@ -108,84 +123,92 @@ export function TradeForm({ initialTokenTicker, initialTradeType = "buy", onTrad
   const totalSOL = tradeType === "buy" ? subtotalSOL + feeSOL : subtotalSOL - feeSOL;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6 border rounded-lg bg-card shadow-md">
-      <Controller
-        control={control}
-        name="tradeType"
-        render={({ field }) => (
-          <RadioGroup
-            onValueChange={field.onChange}
-            defaultValue={field.value}
-            className="flex space-x-4"
-          >
-            <Label className="flex items-center space-x-2 p-3 rounded-md border data-[state=checked]:border-primary data-[state=checked]:bg-primary/10 cursor-pointer flex-1 justify-center">
-              <RadioGroupItem value="buy" id="buy" /> 
-              <ShoppingCart className="h-5 w-5 mr-1 text-green-500" /> Buy
-            </Label>
-            <Label className="flex items-center space-x-2 p-3 rounded-md border data-[state=checked]:border-primary data-[state=checked]:bg-primary/10 cursor-pointer flex-1 justify-center">
-              <RadioGroupItem value="sell" id="sell" /> 
-              <Banknote className="h-5 w-5 mr-1 text-red-500" /> Sell
-            </Label>
-          </RadioGroup>
-        )}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FormField
-            control={control}
-            name="tokenTicker"
-            render={({ field }) => (
-            <div className="space-y-1">
-                <Label htmlFor="tokenTicker">Token</Label>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <SelectTrigger id="tokenTicker">
-                    <SelectValue placeholder="Select token" />
-                </SelectTrigger>
-                <SelectContent>
-                    {TOKENS_DATA.map(token => (
-                    <SelectItem key={token.ticker} value={token.ticker}>
-                        {token.name} ({token.ticker})
-                    </SelectItem>
-                    ))}
-                </SelectContent>
-                </Select>
-                {field.value && selectedToken && <p className="text-xs text-muted-foreground">Price: {selectedToken.currentPriceSOL?.toFixed(5)} {SOL_CURRENCY_SYMBOL}/token</p>}
-                {field.value && tradeType === "sell" && <p className="text-xs text-muted-foreground">Your balance: {currentBalance} {field.value}</p>}
-            </div>
-            )}
+    <Form {...form}>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 p-6 border rounded-lg bg-card shadow-md">
+        <Controller
+          control={control}
+          name="tradeType"
+          render={({ field }) => (
+            <RadioGroup
+              onValueChange={field.onChange}
+              defaultValue={field.value}
+              className="flex space-x-4"
+            >
+              <Label className="flex items-center space-x-2 p-3 rounded-md border data-[state=checked]:border-primary data-[state=checked]:bg-primary/10 cursor-pointer flex-1 justify-center">
+                <RadioGroupItem value="buy" id="buy" /> 
+                <ShoppingCart className="h-5 w-5 mr-1 text-green-500" /> Buy
+              </Label>
+              <Label className="flex items-center space-x-2 p-3 rounded-md border data-[state=checked]:border-primary data-[state=checked]:bg-primary/10 cursor-pointer flex-1 justify-center">
+                <RadioGroupItem value="sell" id="sell" /> 
+                <Banknote className="h-5 w-5 mr-1 text-red-500" /> Sell
+              </Label>
+            </RadioGroup>
+          )}
         />
 
-        <FormField
-            control={control}
-            name="amountTokens"
-            render={({ field }) => (
-            <div className="space-y-1">
-                <Label htmlFor="amountTokens">Amount (Tokens)</Label>
-                <Input id="amountTokens" type="number" placeholder="0.0" {...field} step="any" />
-            </div>
-            )}
-        />
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+              control={control}
+              name="tokenTicker"
+              render={({ field }) => (
+              <FormItem>
+                  <FormLabel>Token</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger id="tokenTicker">
+                          <SelectValue placeholder="Select token" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                        {TOKENS_DATA.map(token => (
+                        <SelectItem key={token.ticker} value={token.ticker}>
+                            {token.name} ({token.ticker})
+                        </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {field.value && selectedToken && <FormDescription className="mt-1">Price: {selectedToken.currentPriceSOL?.toFixed(5)} {SOL_CURRENCY_SYMBOL}/token</FormDescription>}
+                  {field.value && tradeType === "sell" && <FormDescription className="mt-1">Your balance: {currentBalance} {field.value}</FormDescription>}
+                  <FormMessage />
+              </FormItem>
+              )}
+          />
 
-      {selectedToken && amountTokens > 0 && (
-        <div className="space-y-2 text-sm p-4 border rounded-md bg-background/50">
-          <h4 className="font-medium text-foreground mb-1">Order Summary:</h4>
-          <div className="flex justify-between"><span>Subtotal:</span> <span>{subtotalSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span></div>
-          <div className="flex justify-between"><span>Fee (0.7%):</span> <span>{feeSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span></div>
-          <hr className="my-1 border-border" />
-          <div className="flex justify-between font-semibold text-primary">
-            <span>{tradeType === "buy" ? "Total Cost:" : "Net Proceeds:"}</span> 
-            <span>{totalSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span>
-          </div>
-           <div className="text-xs text-muted-foreground text-right">
-            (≈ {(totalSOL * SOL_TO_IDR_RATE).toLocaleString()} {IDR_CURRENCY_SYMBOL})
-          </div>
+          <FormField
+              control={control}
+              name="amountTokens"
+              render={({ field }) => (
+              <FormItem>
+                  <FormLabel>Amount (Tokens)</FormLabel>
+                  <FormControl>
+                    <Input id="amountTokens" type="number" placeholder="0.0" {...field} step="any" />
+                  </FormControl>
+                  <FormMessage />
+              </FormItem>
+              )}
+          />
         </div>
-      )}
 
-      <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || !selectedToken || amountTokens <= 0}>
-        <ArrowRightLeft className="mr-2 h-4 w-4" /> {isSubmitting ? "Processing..." : `${tradeType === "buy" ? "Buy" : "Sell"} ${tokenTicker || "Token"}`}
-      </Button>
-    </form>
+        {selectedToken && amountTokens > 0 && (
+          <div className="space-y-2 text-sm p-4 border rounded-md bg-background/50">
+            <h4 className="font-medium text-foreground mb-1">Order Summary:</h4>
+            <div className="flex justify-between"><span>Subtotal:</span> <span>{subtotalSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span></div>
+            <div className="flex justify-between"><span>Fee (0.7%):</span> <span>{feeSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span></div>
+            <hr className="my-1 border-border" />
+            <div className="flex justify-between font-semibold text-primary">
+              <span>{tradeType === "buy" ? "Total Cost:" : "Net Proceeds:"}</span> 
+              <span>{totalSOL.toFixed(5)} {SOL_CURRENCY_SYMBOL}</span>
+            </div>
+            <div className="text-xs text-muted-foreground text-right">
+              (≈ {(totalSOL * SOL_TO_IDR_RATE).toLocaleString()} {IDR_CURRENCY_SYMBOL})
+            </div>
+          </div>
+        )}
+
+        <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isSubmitting || !selectedToken || amountTokens <= 0}>
+          <ArrowRightLeft className="mr-2 h-4 w-4" /> {isSubmitting ? "Processing..." : `${tradeType === "buy" ? "Buy" : "Sell"} ${tokenTicker || "Token"}`}
+        </Button>
+      </form>
+    </Form>
   );
 }
