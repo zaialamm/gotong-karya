@@ -1,15 +1,14 @@
-
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import NextImage from "next/image"; // Renamed import to avoid conflict
 import { WalletConnectButton } from "./WalletConnectButton";
 import { IPFS_LOGO_URL } from "@/lib/constants";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { usePathname } from 'next/navigation';
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"; // Shadcn sheet for mobile nav
+import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"; 
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -22,10 +21,17 @@ const navLinks = [
 export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
-    setIsMobileMenuOpen(false); // Close mobile menu on route change
-  }, [pathname]);
+    setHasMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (hasMounted) { // Only run this effect after mounting
+      setIsMobileMenuOpen(false); // Close mobile menu on route change
+    }
+  }, [pathname, hasMounted]); // Added hasMounted to dependency array
 
 
   const NavLinksComponent = ({ isMobile }: { isMobile: boolean }) => (
@@ -65,20 +71,28 @@ export function Header() {
     </nav>
   );
 
+  const imagePlaceholder = (
+    <div
+      className="h-10 w-auto bg-transparent" // Matches className of NextImage for consistent layout
+      style={{ aspectRatio: '834 / 222' }} // Ensures correct aspect ratio for w-auto
+    />
+  );
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/campaigns" className="flex items-center gap-2 mr-4">
-          <Image
-            src={IPFS_LOGO_URL}
-            alt="GotongKarya Logo"
-            width={834} // Use natural image width
-            height={222} // Use natural image height
-            className="h-10 w-auto" // CSS controls display size (40px height, auto width)
-            data-ai-hint="company logo"
-            priority
-          />
+          {hasMounted ? (
+            <NextImage
+              src={IPFS_LOGO_URL}
+              alt="GotongKarya Logo"
+              width={834} 
+              height={222} 
+              className="h-10 w-auto" 
+              data-ai-hint="company logo"
+              priority
+            />
+          ) : imagePlaceholder }
         </Link>
         
         <div className="flex-1 items-center justify-center hidden md:flex">
@@ -104,14 +118,16 @@ export function Header() {
               <div className="flex flex-col h-full">
                 <div className="flex justify-between items-center mb-8">
                    <Link href="/campaigns" className="flex items-center gap-2">
-                     <Image
-                        src={IPFS_LOGO_URL}
-                        alt="GotongKarya Logo"
-                        width={834} // Use natural image width
-                        height={222} // Use natural image height
-                        className="h-10 w-auto" // CSS controls display size
-                        data-ai-hint="company logo"
-                      />
+                    {hasMounted ? (
+                       <NextImage
+                          src={IPFS_LOGO_URL}
+                          alt="GotongKarya Logo"
+                          width={834} 
+                          height={222} 
+                          className="h-10 w-auto" 
+                          data-ai-hint="company logo"
+                        />
+                    ) : imagePlaceholder }
                    </Link>
                   <SheetClose asChild>
                      <Button variant="ghost" size="icon">
