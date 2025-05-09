@@ -5,7 +5,7 @@ import { TradeForm } from "@/components/marketplace/TradeForm";
 import { TradeHistory } from "@/components/marketplace/TradeHistory";
 import { UserTokenBalances } from "@/components/marketplace/UserTokenBalances";
 import { TokenCard } from "@/components/marketplace/TokenCard";
-import { TOKENS_DATA, TRADE_HISTORY_DATA, USER_BALANCES_DATA } from "@/lib/constants"; // For refreshing data
+import { TOKENS_DATA, TRADE_HISTORY_DATA, USER_BALANCES_DATA, MARKETPLACE_FEE_PERCENTAGE } from "@/lib/constants"; // For refreshing data
 import { Button } from "@/components/ui/button";
 import { RefreshCw, LineChart } from "lucide-react";
 import {
@@ -101,7 +101,7 @@ export default function MarketplacePage() {
         <ul className="list-disc list-inside space-y-1 text-foreground/70 text-sm">
           <li><span className="font-semibold text-accent">Buy Tokens:</span> Acquire tokens from projects you believe in or want to access.</li>
           <li><span className="font-semibold text-accent">Sell Tokens:</span> Realize gains or liquidate your holdings.</li>
-          <li><span className="font-semibold text-accent">Transaction Fee:</span> A {MARKETPLACE_FEE_PERCENTAGE * 100}% fee applies to trades, supporting the platform's sustainability.</li>
+          <li><span className="font-semibold text-accent">Transaction Fee:</span> A {(MARKETPLACE_FEE_PERCENTAGE * 100).toFixed(1)}% fee applies to trades, supporting the platform's sustainability.</li>
           <li><span className="font-semibold text-accent">Price Discovery:</span> Prices are illustrative and in a real scenario would be determined by market supply and demand.</li>
         </ul>
         <p className="mt-4 text-xs text-muted-foreground">
