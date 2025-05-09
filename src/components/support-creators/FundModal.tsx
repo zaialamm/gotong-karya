@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -17,7 +18,7 @@ import type { Campaign } from "@/types";
 import { fundCampaign } from "@/lib/web3"; // Mock function
 import { useToast } from "@/hooks/use-toast";
 import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL } from "@/lib/constants";
-import { Send, Sparkles, RefreshCw } from "lucide-react";
+import { Send, Sparkles, RefreshCw, Coins } from "lucide-react";
 import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 
@@ -32,6 +33,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
   const [isFunding, setIsFunding] = useState(false);
   const { toast } = useToast();
   const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
+  const [estimatedTokens, setEstimatedTokens] = useState<number>(0);
 
   const {
     liveRate: liveSolToIdrRate,
@@ -46,37 +48,56 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
     const currentNumericAmount = typeof numericAmountIDR === 'number' && !isNaN(numericAmountIDR) ? numericAmountIDR : 0;
     
     if (!isOpen) {
-        // Optionally reset display when modal is not open or simply return
-        // setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
+        setEstimatedTokens(0);
         return;
     }
     
+    let currentSolEquivalent = 0;
     if (isLoadingRate) {
         setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
     } else if (rateError) {
-        const calculatedSOL = (currentNumericAmount > 0 && hookFallbackRate > 0) ? (currentNumericAmount / hookFallbackRate) : 0;
+        currentSolEquivalent = (currentNumericAmount > 0 && hookFallbackRate > 0) ? (currentNumericAmount / hookFallbackRate) : 0;
         const displayRate = `(Fallback: 1 ${SOL_CURRENCY_SYMBOL} = ${hookFallbackRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
-        if (calculatedSOL > 0) {
-            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
+        if (currentSolEquivalent > 0) {
+            setSolEquivalentDisplay(`${currentSolEquivalent.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
         } else {
             setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
         }
     } else if (liveSolToIdrRate) {
-        if (currentNumericAmount > 0) {
-            const calculatedSOL = currentNumericAmount / liveSolToIdrRate;
-            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
+        currentSolEquivalent = (currentNumericAmount > 0 && liveSolToIdrRate > 0) ? (currentNumericAmount / liveSolToIdrRate) : 0;
+        if (currentSolEquivalent > 0) {
+            setSolEquivalentDisplay(`${currentSolEquivalent.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
         } else {
             setSolEquivalentDisplay(`Enter ${IDR_CURRENCY_SYMBOL} amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
         }
-    } else { // Fallback (liveRate is null, no error, not loading)
-        const calculatedSOL = (currentNumericAmount > 0 && hookFallbackRate > 0) ? (currentNumericAmount / hookFallbackRate) : 0;
-        if (calculatedSOL > 0) {
-            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate: ${hookFallbackRate.toLocaleString()})`);
+    } else { 
+        currentSolEquivalent = (currentNumericAmount > 0 && hookFallbackRate > 0) ? (currentNumericAmount / hookFallbackRate) : 0;
+        if (currentSolEquivalent > 0) {
+            setSolEquivalentDisplay(`${currentSolEquivalent.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate: ${hookFallbackRate.toLocaleString()})`);
         } else {
             setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
         }
     }
-  }, [numericAmountIDR, liveSolToIdrRate, isLoadingRate, rateError, hookFallbackRate, isOpen, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
+
+    // Calculate estimated tokens
+    let tokens = 0;
+    if (currentSolEquivalent > 0) {
+        // This logic should mirror the token issuance logic in lib/web3.ts fundCampaign
+        if (campaign.tokenTicker === "JUMBO") {
+            tokens = currentSolEquivalent * 200;
+        } else if (campaign.tokenTicker === "BALI") {
+            tokens = currentSolEquivalent * 150;
+        } else if (campaign.tokenTicker === "MURAL") {
+            tokens = currentSolEquivalent * 100;
+        } else {
+            // Generic fallback for other potential campaign tokens if not specified
+            // Or assume a default rate if the campaign object had a 'tokensPerSOL' field
+            tokens = currentSolEquivalent * 50; 
+        }
+    }
+    setEstimatedTokens(parseFloat(tokens.toFixed(2)));
+
+  }, [numericAmountIDR, liveSolToIdrRate, isLoadingRate, rateError, hookFallbackRate, isOpen, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL, campaign.tokenTicker, effectiveRate]);
 
   const handleFund = async () => {
     if (isNaN(numericAmountIDR) || numericAmountIDR <= 0) {
@@ -97,7 +118,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
     setIsFunding(true);
     try {
       console.log(`Funding with ${solAmountToFund.toFixed(4)} SOL (from ${numericAmountIDR} IDR at rate ${effectiveRate})`);
-      const result = await fundCampaign(campaign.id, solAmountToFund, "SOL");
+      const result = await fundCampaign(campaign.id, solAmountToFund, "SOL"); // fundCampaign uses SOL amount
       toast({
         title: "Funding Successful!",
         description: result.message, 
@@ -105,6 +126,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
       });
       onOpenChange(false); 
       setNumericAmountIDR(80000); 
+      setEstimatedTokens(0);
     } catch (error) {
       console.error("Funding error:", error);
       toast({ title: "Funding Failed", description: (error as Error).message || "An unexpected error occurred.", variant: "destructive" });
@@ -122,8 +144,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
       onOpenChange(open);
       if (!open) { 
         setNumericAmountIDR(80000);
-        // Reset display when modal closes if desired, or let useEffect handle it based on isOpen
-        // setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
+        setEstimatedTokens(0);
       }
     }}>
       <DialogContent className="sm:max-w-md bg-card text-card-foreground">
@@ -138,7 +159,7 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
-          <div className="grid grid-cols-3 items-center gap-x-4 gap-y-2">
+          <div className="grid grid-cols-3 items-center gap-x-4 gap-y-1"> {/* Reduced gap-y-2 to gap-y-1 */}
             <Label htmlFor="amountIDR" className="text-right col-span-1">
               Amount ({IDR_CURRENCY_SYMBOL})
             </Label>
@@ -159,10 +180,19 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
               disabled={isLoadingRate || isFunding}
             />
             <div/> 
-            <div className="col-span-2 text-xs text-muted-foreground flex items-center min-h-[1.5rem]">
+            <div className="col-span-2 text-xs text-muted-foreground flex items-center min-h-[1.5rem] pt-1"> {/* Added pt-1 */}
                 <RefreshCw className={cn("mr-1.5 h-3 w-3 text-primary", isLoadingRate && "animate-spin")}/>
                 <span>{solEquivalentDisplay}</span>
             </div>
+            {numericAmountIDR > 0 && effectiveRate > 0 && solEquivalentForButton > 0 && estimatedTokens > 0 && !isLoadingRate && (
+              <>
+                <div className="col-span-1"/> {/* Spacer */}
+                <div className="col-span-2 text-xs text-muted-foreground flex items-center min-h-[1.5rem] pt-1"> {/* Added pt-1 */}
+                    <Coins className="mr-1.5 h-3 w-3 text-primary"/>
+                    <span>You'll receive approx. {estimatedTokens.toLocaleString()} ${campaign.tokenTicker} tokens.</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
         <DialogFooter className="sm:justify-between">
