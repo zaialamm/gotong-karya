@@ -17,8 +17,9 @@ import { Label } from "@/components/ui/label";
 import type { Campaign } from "@/types";
 import { fundCampaign } from "@/lib/web3"; // Mock function
 import { useToast } from "@/hooks/use-toast";
-import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE } from "@/lib/constants";
+import { SOL_CURRENCY_SYMBOL, IDR_CURRENCY_SYMBOL, SOL_TO_IDR_RATE as FALLBACK_SOL_TO_IDR_RATE } from "@/lib/constants";
 import { Send, Sparkles, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface FundModalProps {
   campaign: Campaign;
@@ -27,40 +28,96 @@ interface FundModalProps {
 }
 
 export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
-  const [amountIDR, setAmountIDR] = useState<string>("80000"); // Default to 80,000 IDR (approx 0.1 SOL)
+  const [amountIDR, setAmountIDR] = useState<string>("80000");
   const [isFunding, setIsFunding] = useState(false);
   const { toast } = useToast();
-  const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("");
+  
+  const [liveSolToIdrRate, setLiveSolToIdrRate] = useState<number | null>(null);
+  const [isLoadingRate, setIsLoadingRate] = useState<boolean>(true);
+  const [rateError, setRateError] = useState<string | null>(null);
+  const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
+
+  const effectiveSolToIdrRate = liveSolToIdrRate ?? FALLBACK_SOL_TO_IDR_RATE;
+
+  useEffect(() => {
+    if (!isOpen) return; // Only fetch if modal is open
+
+    async function fetchRate() {
+      setIsLoadingRate(true);
+      setRateError(null);
+      try {
+        const response = await fetch('/api/exchange-rate');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Failed to fetch exchange rate details' }));
+          throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (data.rate && typeof data.rate === 'number') {
+          setLiveSolToIdrRate(data.rate);
+        } else {
+          throw new Error(data.error || 'Rate not found or invalid in API response');
+        }
+      } catch (error) {
+        console.error("Error fetching SOL/IDR rate in FundModal:", error);
+        setRateError((error as Error).message);
+        setLiveSolToIdrRate(null); // Ensure fallback is used
+      } finally {
+        setIsLoadingRate(false);
+      }
+    }
+    fetchRate();
+  }, [isOpen]);
 
   useEffect(() => {
     const numericAmountIDR = parseFloat(amountIDR);
-    if (!isNaN(numericAmountIDR) && numericAmountIDR > 0 && SOL_TO_IDR_RATE > 0) {
-      const calculatedSOL = numericAmountIDR / SOL_TO_IDR_RATE;
-      setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}`);
+    
+    if (isLoadingRate) {
+        setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
+    } else if (rateError) {
+        const calculatedSOL = (numericAmountIDR > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (numericAmountIDR / FALLBACK_SOL_TO_IDR_RATE) : 0;
+        const displayRate = `(Fallback: 1 ${SOL_CURRENCY_SYMBOL} = ${FALLBACK_SOL_TO_IDR_RATE.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
+        if (calculatedSOL > 0) {
+            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
+        } else {
+            setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
+        }
+    } else if (liveSolToIdrRate) {
+        if (numericAmountIDR > 0) {
+            const calculatedSOL = numericAmountIDR / liveSolToIdrRate;
+            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
+        } else {
+            setSolEquivalentDisplay(`Enter ${IDR_CURRENCY_SYMBOL} amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
+        }
     } else {
-      setSolEquivalentDisplay(`Enter a valid IDR amount`);
+        const calculatedSOL = (numericAmountIDR > 0 && FALLBACK_SOL_TO_IDR_RATE > 0) ? (numericAmountIDR / FALLBACK_SOL_TO_IDR_RATE) : 0;
+        if (calculatedSOL > 0) {
+            setSolEquivalentDisplay(`${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate)`);
+        } else {
+            setSolEquivalentDisplay(`Enter a valid ${IDR_CURRENCY_SYMBOL} amount`);
+        }
     }
-  }, [amountIDR]);
+  }, [amountIDR, liveSolToIdrRate, isLoadingRate, rateError]);
 
   const handleFund = async () => {
     const numericAmountIDR = parseFloat(amountIDR);
     if (isNaN(numericAmountIDR) || numericAmountIDR <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid positive IDR amount.", variant: "destructive" });
+      toast({ title: "Invalid Amount", description: `Please enter a valid positive ${IDR_CURRENCY_SYMBOL} amount.`, variant: "destructive" });
       return;
     }
-    if (SOL_TO_IDR_RATE <= 0) {
-      toast({ title: "Configuration Error", description: "SOL to IDR rate is not configured correctly.", variant: "destructive" });
+    if (effectiveSolToIdrRate <= 0) {
+      toast({ title: "Configuration Error", description: `${SOL_CURRENCY_SYMBOL} to ${IDR_CURRENCY_SYMBOL} rate is not configured correctly or is zero.`, variant: "destructive" });
       return;
     }
 
-    const solAmountToFund = numericAmountIDR / SOL_TO_IDR_RATE;
+    const solAmountToFund = numericAmountIDR / effectiveSolToIdrRate;
     if (solAmountToFund <= 0) {
-        toast({ title: "Invalid Amount", description: "Calculated SOL amount is too small to fund.", variant: "destructive" });
+        toast({ title: "Invalid Amount", description: `Calculated ${SOL_CURRENCY_SYMBOL} amount is too small to fund. Please increase the ${IDR_CURRENCY_SYMBOL} amount.`, variant: "destructive" });
         return;
     }
 
     setIsFunding(true);
     try {
+      console.log(`Funding with ${solAmountToFund.toFixed(4)} SOL (from ${numericAmountIDR} IDR at rate ${effectiveSolToIdrRate})`);
       const result = await fundCampaign(campaign.id, solAmountToFund, "SOL");
       toast({
         title: "Funding Successful!",
@@ -78,8 +135,8 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
   };
   
   const numericAmountIDRForButton = parseFloat(amountIDR);
-  const solEquivalentForButton = !isNaN(numericAmountIDRForButton) && numericAmountIDRForButton > 0 && SOL_TO_IDR_RATE > 0
-    ? (numericAmountIDRForButton / SOL_TO_IDR_RATE)
+  const solEquivalentForButton = !isNaN(numericAmountIDRForButton) && numericAmountIDRForButton > 0 && effectiveSolToIdrRate > 0
+    ? (numericAmountIDRForButton / effectiveSolToIdrRate)
     : 0;
 
   return (
@@ -107,33 +164,33 @@ export function FundModal({ campaign, isOpen, onOpenChange }: FundModalProps) {
               onChange={(e) => setAmountIDR(e.target.value)}
               className="col-span-2"
               placeholder="Enter amount in IDR"
-              step="1000" // Common step for IDR
+              step="1000" 
+              disabled={isLoadingRate || isFunding}
             />
             <div/> 
-            <div className="col-span-2 text-xs text-muted-foreground flex items-center">
-                <RefreshCw className="mr-1.5 h-3 w-3 text-primary"/>
+            <div className="col-span-2 text-xs text-muted-foreground flex items-center min-h-[1.5rem]">
+                <RefreshCw className={cn("mr-1.5 h-3 w-3 text-primary", isLoadingRate && "animate-spin")}/>
                 <span>{solEquivalentDisplay}</span>
             </div>
           </div>
         </div>
         <DialogFooter className="sm:justify-between">
           <DialogClose asChild>
-            <Button type="button" variant="outline">
+            <Button type="button" variant="outline" disabled={isFunding}>
               Cancel
             </Button>
           </DialogClose>
           <Button 
             type="button" 
             onClick={handleFund} 
-            disabled={isFunding || solEquivalentForButton <=0} 
+            disabled={isFunding || isLoadingRate || solEquivalentForButton <=0} 
             className="bg-accent hover:bg-accent/90 text-accent-foreground"
           >
             <Send className="mr-2 h-4 w-4" />
-            {isFunding ? "Processing..." : `Fund (~${solEquivalentForButton > 0 ? solEquivalentForButton.toFixed(4) : '0.0000'} SOL)`}
+            {isFunding ? "Processing..." : (isLoadingRate ? `Loading Rate...` : `Fund (~${solEquivalentForButton > 0 ? solEquivalentForButton.toFixed(4) : '0.0000'} ${SOL_CURRENCY_SYMBOL})`)}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-

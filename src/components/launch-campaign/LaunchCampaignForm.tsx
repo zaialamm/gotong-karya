@@ -19,9 +19,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { launchNewCampaign } from "@/lib/web3"; // Mock function
-import { SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
+import { SOL_TO_IDR_RATE as FALLBACK_SOL_TO_IDR_RATE, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
 import { Rocket, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
@@ -35,7 +36,10 @@ type LaunchCampaignFormValues = z.infer<typeof formSchema>;
 
 export function LaunchCampaignForm() {
   const { toast } = useToast();
-  const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("");
+  const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("Enter IDR amount to see SOL equivalent.");
+  const [liveSolToIdrRate, setLiveSolToIdrRate] = useState<number | null>(null);
+  const [isLoadingRate, setIsLoadingRate] = useState<boolean>(true);
+  const [rateError, setRateError] = useState<string | null>(null);
 
   const form = useForm<LaunchCampaignFormValues>({
     resolver: zodResolver(formSchema),
@@ -49,27 +53,80 @@ export function LaunchCampaignForm() {
   });
 
   const fundingGoalIDRValue = form.watch("fundingGoalIDR");
+  const effectiveSolToIdrRate = liveSolToIdrRate ?? FALLBACK_SOL_TO_IDR_RATE;
 
   useEffect(() => {
-    if (fundingGoalIDRValue > 0 && SOL_TO_IDR_RATE > 0) {
-      const calculatedSOL = fundingGoalIDRValue / SOL_TO_IDR_RATE;
-      setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}`);
-    } else if (fundingGoalIDRValue === 0) {
-      setSolEquivalentDisplay("Enter IDR amount to see SOL equivalent.");
-    } 
-    else {
-      setSolEquivalentDisplay("Invalid IDR amount.");
+    async function fetchRate() {
+      setIsLoadingRate(true);
+      setRateError(null);
+      try {
+        const response = await fetch('/api/exchange-rate');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: 'Failed to fetch exchange rate details' }));
+          throw new Error(errorData.error || `Network response was not ok: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (data.rate && typeof data.rate === 'number') {
+          setLiveSolToIdrRate(data.rate);
+        } else {
+          throw new Error(data.error || 'Rate not found or invalid in API response');
+        }
+      } catch (error) {
+        console.error("Error fetching SOL/IDR rate:", error);
+        setRateError((error as Error).message);
+        setLiveSolToIdrRate(null); // Ensure fallback is used
+      } finally {
+        setIsLoadingRate(false);
+      }
     }
-  }, [fundingGoalIDRValue]);
+    fetchRate();
+  }, []);
+
+  useEffect(() => {
+    if (isLoadingRate) {
+      setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
+    } else if (rateError) {
+      const calculatedSOL = fundingGoalIDRValue / FALLBACK_SOL_TO_IDR_RATE;
+      const displayRate = `(Fallback rate: 1 ${SOL_CURRENCY_SYMBOL} = ${FALLBACK_SOL_TO_IDR_RATE.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
+      if (fundingGoalIDRValue > 0) {
+        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
+      } else {
+        setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
+      }
+    } else if (liveSolToIdrRate) {
+      if (fundingGoalIDRValue > 0) {
+        const calculatedSOL = fundingGoalIDRValue / liveSolToIdrRate;
+        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
+      } else {
+        setSolEquivalentDisplay(`Enter IDR amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
+      }
+    } else { // Should not happen if logic is correct, but as a safe fallback
+       const calculatedSOL = fundingGoalIDRValue / FALLBACK_SOL_TO_IDR_RATE;
+       if (fundingGoalIDRValue > 0) {
+        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Using fallback rate)`);
+       } else {
+        setSolEquivalentDisplay("Enter IDR amount to see SOL equivalent.");
+       }
+    }
+  }, [fundingGoalIDRValue, liveSolToIdrRate, isLoadingRate, rateError]);
 
 
   async function onSubmit(values: LaunchCampaignFormValues) {
+    if (effectiveSolToIdrRate <= 0) {
+       toast({
+          title: "Rate Error",
+          description: "Cannot calculate SOL equivalent. Exchange rate is invalid.",
+          variant: "destructive",
+        });
+        return;
+    }
+
     try {
-      const fundingGoalSOL = values.fundingGoalIDR / SOL_TO_IDR_RATE;
+      const fundingGoalSOL = values.fundingGoalIDR / effectiveSolToIdrRate;
       if (fundingGoalSOL <= 0) {
         toast({
           title: "Invalid Amount",
-          description: "The calculated SOL amount is too small. Please increase the IDR funding goal.",
+          description: "The calculated SOL amount is too small. Please increase the IDR funding goal or check the exchange rate.",
           variant: "destructive",
         });
         return;
@@ -78,13 +135,13 @@ export function LaunchCampaignForm() {
       const campaignDataForApi = {
         projectName: values.projectName,
         description: values.description,
-        fundingGoalSOL: parseFloat(fundingGoalSOL.toFixed(4)), // Ensure it's a number with reasonable precision
+        fundingGoalSOL: parseFloat(fundingGoalSOL.toFixed(4)),
         tokenTicker: values.tokenTicker,
         tokenName: values.tokenName,
       };
       
       console.log("Campaign form submitted (values in IDR):", values);
-      console.log("Campaign data for API (goal in SOL):", campaignDataForApi);
+      console.log("Campaign data for API (goal in SOL):", campaignDataForApi, "using rate:", effectiveSolToIdrRate);
       
       const result = await launchNewCampaign(campaignDataForApi);
       
@@ -155,11 +212,11 @@ export function LaunchCampaignForm() {
                   <FormItem>
                     <FormLabel>Funding Goal ({IDR_CURRENCY_SYMBOL})</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder={`E.g., ${ (100 * SOL_TO_IDR_RATE).toLocaleString()}`} {...field} />
+                      <Input type="number" placeholder={`E.g., ${ (100 * FALLBACK_SOL_TO_IDR_RATE).toLocaleString()}`} {...field} />
                     </FormControl>
                     <FormDescription>The amount of {IDR_CURRENCY_SYMBOL} you aim to raise.</FormDescription>
-                    <div className="text-xs text-muted-foreground mt-1 flex items-center pt-1">
-                        <RefreshCw className="mr-1.5 h-3 w-3 text-primary"/>
+                    <div className="text-xs text-muted-foreground mt-1 flex items-center pt-1 min-h-[1.5rem]">
+                        <RefreshCw className={cn("mr-1.5 h-3 w-3 text-primary", isLoadingRate && "animate-spin")}/>
                         <span>{solEquivalentDisplay}</span>
                     </div>
                     <FormMessage />
@@ -195,8 +252,8 @@ export function LaunchCampaignForm() {
                   </FormItem>
                 )}
               />
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? "Launching..." : "Launch Campaign"}
+            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isLoadingRate}>
+              {form.formState.isSubmitting ? "Launching..." : (isLoadingRate ? "Loading Rate..." : "Launch Campaign")}
             </Button>
           </form>
         </Form>
@@ -204,3 +261,4 @@ export function LaunchCampaignForm() {
     </Card>
   );
 }
+
