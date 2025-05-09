@@ -225,7 +225,7 @@ export function LaunchCampaignForm() {
                   <FormItem>
                     <FormLabel>Token Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., JUMBO, JARVIS, ...." {...field} />
+                      <Input placeholder="E.g., BALI Harmony Music Festival, ..." {...field} />
                     </FormControl>
                     <FormDescription>The full name of your project's token.</FormDescription>
                     <FormMessage />
