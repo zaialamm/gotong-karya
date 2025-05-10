@@ -24,7 +24,7 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     status: "Running",
     tokenTicker: "JUMBO",
     tokenName: "Jumbo Animation Film Token",
-    imageUrl: "https://picsum.photos/seed/jumbo_animation_film/600/400", // Updated image seed
+    imageUrl: "https://firestuff.storage.googleapis.com/v0/b/aidevs-407407.appspot.com/o/8c3bb582-770c-4617-8d62-df3169a0e306.png?alt=media&token=6561a078-1830-4d68-8341-9f239126df25", // Updated image URL
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 30 days from now
     benefits: [
       "Receive exclusive JUMBO tokens.",
@@ -114,4 +114,5 @@ export const SOL_CURRENCY_SYMBOL = "SOL";
 export const USDC_CURRENCY_SYMBOL = "USDC";
 export const USDT_CURRENCY_SYMBOL = "USDT";
 export const IDR_CURRENCY_SYMBOL = "IDR";
+
 
