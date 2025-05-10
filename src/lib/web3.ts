@@ -158,16 +158,32 @@ export const launchNewCampaign = async (formData: {
   fundingGoalSOL: number;
   tokenTicker: string;
   tokenName: string;
+  benefits: string[];
 }): Promise<{ campaignId: string; message: string }> => {
   console.log("Launching new campaign with data:", formData);
   await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
 
   const campaignId = `campaignMock_${Date.now().toString(16)}`;
-  const message = `Campaign '${formData.projectName}' created successfully! Token Ticker: ${formData.tokenTicker}. Campaign ID: ${campaignId}`;
+  const message = `Campaign '${formData.projectName}' created successfully! Token Ticker: ${formData.tokenTicker}. Campaign ID: ${campaignId}. Benefits: ${formData.benefits.join(', ')}`;
   
   console.log(message);
   // In a real app, this would interact with a smart contract and save to a DB.
   // We can also add it to a local state or a temporary mock data array if needed for immediate reflection in UI.
+  // Example: Add to CAMPAIGNS_DATA for mock purposes
+  // CAMPAIGNS_DATA.push({
+  //   id: campaignId,
+  //   projectName: formData.projectName,
+  //   description: formData.description,
+  //   creator: CREATORS_DATA[0], // Mock creator
+  //   fundingGoalSOL: formData.fundingGoalSOL,
+  //   raisedSOL: 0,
+  //   status: "Running",
+  //   tokenTicker: formData.tokenTicker,
+  //   tokenName: formData.tokenName,
+  //   benefits: formData.benefits,
+  //   imageUrl: "https://picsum.photos/seed/new_campaign/600/400", // Placeholder image
+  //   endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 30 days from now
+  // });
   
   return { campaignId, message };
 };

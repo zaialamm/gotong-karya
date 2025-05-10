@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CalendarDays, CheckCircle, Users, Tag, Hourglass, XCircle, HandCoins } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle, Users, Tag, Hourglass, XCircle, HandCoins, Gift } from "lucide-react";
 import { FundModal } from "@/components/support-creators/FundModal";
 import { useState, useEffect } from "react";
 
@@ -63,7 +63,7 @@ export default function CampaignDetailsPage() {
     );
   }
 
-  const { projectName, creator, fundingGoalSOL, raisedSOL, status, imageUrl, description, endDate, tokenTicker, tokenName } = campaign;
+  const { projectName, creator, fundingGoalSOL, raisedSOL, status, imageUrl, description, endDate, tokenTicker, tokenName, benefits } = campaign;
   const progressPercentage = (raisedSOL / fundingGoalSOL) * 100;
   const raisedIDR = raisedSOL * effectiveRate;
   const goalIDR = fundingGoalSOL * effectiveRate;
@@ -115,6 +115,19 @@ export default function CampaignDetailsPage() {
             <div className="md:col-span-2 space-y-4">
               <h2 className="text-2xl font-semibold text-foreground">About the Project</h2>
               <p className="text-foreground/80 leading-relaxed whitespace-pre-line">{description}</p>
+              
+              {benefits && benefits.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-xl font-semibold text-primary mb-3 flex items-center">
+                    <Gift className="mr-2 h-5 w-5" /> Supporter Benefits
+                  </h3>
+                  <ul className="list-disc list-inside space-y-2 text-foreground/80 pl-2">
+                    {benefits.map((benefit, index) => (
+                      <li key={index}>{benefit}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <Card className="bg-background/50 p-4 space-y-3">
               <div className="flex items-center gap-3">

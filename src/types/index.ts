@@ -21,6 +21,7 @@ export interface Campaign {
   tokenMetadata?: string; // e.g., "Create Jumbo Animation Film Token"
   imageUrl: string;
   endDate?: string; // Optional end date for campaign
+  benefits?: string[]; // List of benefits for supporters
 }
 
 export interface TokenInfo {

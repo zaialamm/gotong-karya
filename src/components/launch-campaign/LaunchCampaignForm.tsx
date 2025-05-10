@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { launchNewCampaign } from "@/lib/web3"; // Mock function
 import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
-import { Rocket, RefreshCw } from "lucide-react";
+import { Rocket, RefreshCw, Gift } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
@@ -33,6 +33,7 @@ const formSchema = z.object({
     .min(100000, `Minimum funding goal is ${formatToIDR(100000)}.`),
   tokenTicker: z.string().min(2, "Token ticker must be 2-5 characters.").max(5).regex(/^[A-Z0-9]+$/, "Ticker must be uppercase letters/numbers."),
   tokenName: z.string().min(5, "Token name must be at least 5 characters.").max(50),
+  benefitsInput: z.string().max(1000, "Benefits description is too long (max 1000 characters).").optional(),
 });
 
 type LaunchCampaignFormValues = z.infer<typeof formSchema>;
@@ -57,6 +58,7 @@ export function LaunchCampaignForm() {
       // fundingGoalIDR: undefined, // Default to undefined to allow placeholder to show properly
       tokenTicker: "",
       tokenName: "",
+      benefitsInput: "",
     },
     mode: "onChange",
   });
@@ -115,16 +117,21 @@ export function LaunchCampaignForm() {
         return;
       }
 
+      const benefits = values.benefitsInput
+        ? values.benefitsInput.split('\n').map(b => b.trim()).filter(b => b.length > 0)
+        : [];
+
       const campaignDataForApi = {
         projectName: values.projectName,
         description: values.description,
         fundingGoalSOL: parseFloat(fundingGoalSOL.toFixed(4)),
         tokenTicker: values.tokenTicker,
         tokenName: values.tokenName,
+        benefits: benefits,
       };
       
       console.log("Campaign form submitted (values in IDR):", values);
-      console.log("Campaign data for API (goal in SOL):", campaignDataForApi, "using rate:", effectiveRate);
+      console.log("Campaign data for API (goal in SOL, with benefits):", campaignDataForApi, "using rate:", effectiveRate);
       
       const result = await launchNewCampaign(campaignDataForApi);
       
@@ -225,7 +232,7 @@ export function LaunchCampaignForm() {
                   <FormItem>
                     <FormLabel>Token Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., BALI Harmony Music Festival, ..." {...field} />
+                      <Input placeholder="E.g., BALI Harmony Music Festival Token" {...field} />
                     </FormControl>
                     <FormDescription>The full name of your project's token.</FormDescription>
                     <FormMessage />
@@ -247,6 +254,29 @@ export function LaunchCampaignForm() {
                   </FormItem>
                 )}
               />
+            <FormField
+              control={form.control}
+              name="benefitsInput"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center">
+                    <Gift className="mr-2 h-4 w-4 text-primary" />
+                    Supporter Benefits (Optional)
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="List the benefits supporters will receive, one per line. E.g.,&#10;- Exclusive digital badge&#10;- Early access to content&#10;- Name in credits"
+                      {...field}
+                      className="min-h-[100px]"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Outline what backers get for supporting your project. Each benefit on a new line.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isLoadingRate}>
               {form.formState.isSubmitting ? "Launching..." : (isLoadingRate ? "Loading Rate..." : "Launch Campaign")}
             </Button>

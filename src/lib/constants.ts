@@ -26,6 +26,12 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     tokenName: "Jumbo Animation Film Token",
     imageUrl: "https://picsum.photos/seed/jumbo_film/600/400",
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 30 days from now
+    benefits: [
+      "Receive exclusive JUMBO tokens.",
+      "Early access to film screenings.",
+      "Your name in the film credits.",
+      "Digital art book."
+    ],
   },
   {
     id: "campaign2",
@@ -39,6 +45,12 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     tokenName: "Bali Harmony Music Token",
     imageUrl: "https://picsum.photos/seed/bali_music/600/400",
     endDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 45 days from now
+    benefits: [
+      "Get BALI tokens for platform interactions.",
+      "Signed digital copy of the album.",
+      "Behind-the-scenes content.",
+      "Invitation to a virtual listening party."
+    ],
   },
   {
     id: "campaign3",
@@ -52,6 +64,12 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     tokenName: "Nusantara Mural Art Token",
     imageUrl: "https://picsum.photos/seed/mural_art/600/400",
     endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 60 days from now
+    benefits: [
+      "Collect MURAL tokens.",
+      "High-resolution photos of the murals.",
+      "Acknowledgement on the project website.",
+      "Limited edition sticker pack."
+    ],
   },
   {
     id: "campaign4",
@@ -65,6 +83,11 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     tokenName: "Archipelago Game Token",
     imageUrl: "https://picsum.photos/seed/arch_game/600/400",
     endDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
+    benefits: [
+      "Received ARCH tokens.",
+      "Digital copy of the rulebook.",
+      "Exclusive game insights."
+    ],
   },
 ];
 
