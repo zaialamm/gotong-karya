@@ -3,14 +3,12 @@
 
 import Link from "next/link";
 import { WalletConnectButton } from "./WalletConnectButton";
-import { Menu, X, LogIn, WalletCards } from "lucide-react"; // Added LogIn, WalletCards for placeholder
+import { Menu, X, LogIn, WalletCards } from "lucide-react"; 
 import { useState, useEffect } from "react";
 import { usePathname } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet"; 
 import { cn } from "@/lib/utils";
-// import Image from "next/image"; // Image component removed
-// import { IPFS_LOGO_URL } from "@/lib/constants"; // IPFS_LOGO_URL removed
 
 const navLinks = [
   { href: "/campaigns", label: "Campaigns" },
@@ -89,7 +87,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="w-full flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/campaigns" className="flex items-center gap-2 mr-4">
           <LogoComponent />
         </Link>
