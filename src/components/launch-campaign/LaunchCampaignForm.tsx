@@ -28,12 +28,12 @@ import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(1000),
+  benefitsInput: z.string().min(1, "Please list at least one benefit.").max(1000, "Benefits description is too long (max 1000 characters)."),
   fundingGoalIDR: z.coerce.number({invalid_type_error: "Funding goal must be a number."})
     .positive("Funding goal in IDR must be a positive number.")
     .min(100000, `Minimum funding goal is ${formatToIDR(100000)}.`),
   tokenTicker: z.string().min(2, "Token ticker must be 2-5 characters.").max(5).regex(/^[A-Z0-9]+$/, "Ticker must be uppercase letters/numbers."),
   tokenName: z.string().min(5, "Token name must be at least 5 characters.").max(50),
-  benefitsInput: z.string().max(1000, "Benefits description is too long (max 1000 characters).").optional(),
 });
 
 type LaunchCampaignFormValues = z.infer<typeof formSchema>;
@@ -55,10 +55,10 @@ export function LaunchCampaignForm() {
     defaultValues: {
       projectName: "",
       description: "",
+      benefitsInput: "",
       // fundingGoalIDR: undefined, // Default to undefined to allow placeholder to show properly
       tokenTicker: "",
       tokenName: "",
-      benefitsInput: "",
     },
     mode: "onChange",
   });
@@ -118,8 +118,9 @@ export function LaunchCampaignForm() {
       }
 
       const benefits = values.benefitsInput
-        ? values.benefitsInput.split('\n').map(b => b.trim()).filter(b => b.length > 0)
-        : [];
+        .split('\n')
+        .map(b => b.trim())
+        .filter(b => b.length > 0);
 
       const campaignDataForApi = {
         projectName: values.projectName,
@@ -194,6 +195,29 @@ export function LaunchCampaignForm() {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="benefitsInput"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center">
+                    <Gift className="mr-2 h-4 w-4 text-primary" />
+                    Supporter Benefits
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="List the benefits supporters will receive, one per line. E.g.,&#10;- Exclusive digital badge&#10;- Early access to content&#10;- Name in credits"
+                      {...field}
+                      className="min-h-[100px]"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Outline what backers get for supporting your project. Each benefit on a new line. At least one benefit is required.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
@@ -254,29 +278,6 @@ export function LaunchCampaignForm() {
                   </FormItem>
                 )}
               />
-            <FormField
-              control={form.control}
-              name="benefitsInput"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center">
-                    <Gift className="mr-2 h-4 w-4 text-primary" />
-                    Supporter Benefits (Optional)
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="List the benefits supporters will receive, one per line. E.g.,&#10;- Exclusive digital badge&#10;- Early access to content&#10;- Name in credits"
-                      {...field}
-                      className="min-h-[100px]"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Outline what backers get for supporting your project. Each benefit on a new line.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isLoadingRate}>
               {form.formState.isSubmitting ? "Launching..." : (isLoadingRate ? "Loading Rate..." : "Launch Campaign")}
             </Button>
