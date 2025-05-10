@@ -239,6 +239,29 @@ export function LaunchCampaignForm() {
             />
             <FormField
               control={form.control}
+              name="benefitsInput"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center">
+                    <Gift className="mr-2 h-4 w-4 text-primary" />
+                    Supporter Benefits
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="List the benefits supporters will receive, one per line. E.g.,&#10;- Exclusive digital badge&#10;- Early access to content&#10;- Name in credits"
+                      {...field}
+                      className="min-h-[100px]"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Outline what backers get for supporting your project. Each benefit on a new line. At least one benefit is required.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name="featuredImage"
               render={({ field }) => (
                 <FormItem>
@@ -273,34 +296,11 @@ export function LaunchCampaignForm() {
                   </FormControl>
                   {imagePreview && (
                     <div className="mt-2 border border-border rounded-md p-2 inline-block">
-                      <Image src={imagePreview} alt="Featured image preview" width={200} height={100} className="rounded-md object-contain max-h-[150px]" data-ai-hint="campaign preview" />
+                      <Image src={imagePreview} alt="Featured image preview" width={200} height={100} className="rounded-md object-contain max-h-[150px]" data-ai-hint="campaign preview"/>
                     </div>
                   )}
                   <FormDescription>
                     Upload a compelling image for your campaign (JPG, PNG, WEBP, GIF, max 5MB).
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="benefitsInput"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center">
-                    <Gift className="mr-2 h-4 w-4 text-primary" />
-                    Supporter Benefits
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="List the benefits supporters will receive, one per line. E.g.,&#10;- Exclusive digital badge&#10;- Early access to content&#10;- Name in credits"
-                      {...field}
-                      className="min-h-[100px]"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Outline what backers get for supporting your project. Each benefit on a new line. At least one benefit is required.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -344,7 +344,7 @@ export function LaunchCampaignForm() {
                   <FormItem>
                     <FormLabel>Token Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., BALI Harmony Music Festival Token" {...field} />
+                      <Input placeholder="E.g., gkbaliharmonyfestival" {...field} />
                     </FormControl>
                     <FormDescription>The full name of your project's token.</FormDescription>
                     <FormMessage />
