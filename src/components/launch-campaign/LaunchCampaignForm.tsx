@@ -32,6 +32,7 @@ const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gi
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(1000),
+  benefitsInput: z.string().min(1, "Please list at least one benefit.").max(1000, "Benefits description is too long (max 1000 characters)."),
   featuredImage: z
     .custom<File>((val) => val instanceof File, {
       message: "Please upload a featured image for your campaign.",
@@ -41,7 +42,6 @@ const formSchema = z.object({
       (file) => ACCEPTED_IMAGE_TYPES.includes(file.type),
       "Only .jpg, .jpeg, .png, .webp, and .gif formats are accepted."
     ),
-  benefitsInput: z.string().min(1, "Please list at least one benefit.").max(1000, "Benefits description is too long (max 1000 characters)."),
   fundingGoalIDR: z.coerce.number({invalid_type_error: "Funding goal must be a number."})
     .positive("Funding goal in IDR must be a positive number.")
     .min(100000, `Minimum funding goal is ${formatToIDR(100000)}.`),
@@ -78,8 +78,8 @@ export function LaunchCampaignForm() {
     defaultValues: {
       projectName: "",
       description: "",
-      featuredImage: undefined,
       benefitsInput: "",
+      featuredImage: undefined,
       // fundingGoalIDR: undefined, // Default to undefined to allow placeholder to show properly
       tokenTicker: "",
       tokenName: "",
@@ -296,7 +296,7 @@ export function LaunchCampaignForm() {
                   </FormControl>
                   {imagePreview && (
                     <div className="mt-2 border border-border rounded-md p-2 inline-block">
-                      <Image src={imagePreview} alt="Featured image preview" width={200} height={100} className="rounded-md object-contain max-h-[150px]" data-ai-hint="campaign preview"/>
+                      <Image src={imagePreview} alt="Featured image preview" width={200} height={150} className="rounded-md object-contain max-h-[200px]" data-ai-hint="campaign preview"/>
                     </div>
                   )}
                   <FormDescription>
