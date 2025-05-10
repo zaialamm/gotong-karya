@@ -101,3 +101,4 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
     </Card>
   );
 }
+

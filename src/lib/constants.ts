@@ -17,14 +17,14 @@ export const CAMPAIGNS_DATA: Campaign[] = [
   {
     id: "campaign1",
     projectName: "Create Jumbo Animation Film",
-    description: "Help us bring Jumbo, a heartwarming tale of a little elephant, to life through a stunning animated film. Funds will be used for animation, voice acting, and music production.",
+    description: "Support the creation of 'Jumbo', an animation film that has captured hearts across Indonesia! This campaign aims to fund the final stages of production, including advanced animation, original score composition, and wider distribution. Be a part of Indonesian animation history!",
     creator: CREATORS_DATA[0],
     fundingGoalSOL: 50,
     raisedSOL: 30,
     status: "Running",
     tokenTicker: "JUMBO",
     tokenName: "Jumbo Animation Film Token",
-    imageUrl: "https://picsum.photos/seed/jumbo_film/600/400",
+    imageUrl: "https://picsum.photos/seed/jumbo_animation_film/600/400", // Updated image seed
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 30 days from now
     benefits: [
       "Receive exclusive JUMBO tokens.",
@@ -114,3 +114,4 @@ export const SOL_CURRENCY_SYMBOL = "SOL";
 export const USDC_CURRENCY_SYMBOL = "USDC";
 export const USDT_CURRENCY_SYMBOL = "USDT";
 export const IDR_CURRENCY_SYMBOL = "IDR";
+
