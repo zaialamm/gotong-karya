@@ -20,14 +20,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { launchNewCampaign } from "@/lib/web3"; // Mock function
 import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
-import { Rocket, RefreshCw, Gift } from "lucide-react";
+import { Rocket, RefreshCw, Gift, Image as ImageIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import Image from "next/image"; // For preview
 import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 const formSchema = z.object({
   projectName: z.string().min(5, "Project name must be at least 5 characters.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(1000),
+  featuredImage: z
+    .custom<File>((val) => val instanceof File, {
+      message: "Please upload a featured image for your campaign.",
+    })
+    .refine((file) => file.size <= MAX_FILE_SIZE, `Max image size is 5MB.`)
+    .refine(
+      (file) => ACCEPTED_IMAGE_TYPES.includes(file.type),
+      "Only .jpg, .jpeg, .png, .webp, and .gif formats are accepted."
+    ),
   benefitsInput: z.string().min(1, "Please list at least one benefit.").max(1000, "Benefits description is too long (max 1000 characters)."),
   fundingGoalIDR: z.coerce.number({invalid_type_error: "Funding goal must be a number."})
     .positive("Funding goal in IDR must be a positive number.")
@@ -38,9 +51,19 @@ const formSchema = z.object({
 
 type LaunchCampaignFormValues = z.infer<typeof formSchema>;
 
+const fileToDataUri = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export function LaunchCampaignForm() {
   const { toast } = useToast();
   const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("Enter IDR amount to see SOL equivalent.");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   const {
     liveRate: liveSolToIdrRate,
@@ -55,6 +78,7 @@ export function LaunchCampaignForm() {
     defaultValues: {
       projectName: "",
       description: "",
+      featuredImage: undefined,
       benefitsInput: "",
       // fundingGoalIDR: undefined, // Default to undefined to allow placeholder to show properly
       tokenTicker: "",
@@ -106,6 +130,22 @@ export function LaunchCampaignForm() {
         return;
     }
 
+    let imageUrl = "https://picsum.photos/seed/new_default/600/400"; // Default fallback
+    if (values.featuredImage) {
+      try {
+        imageUrl = await fileToDataUri(values.featuredImage);
+      } catch (error) {
+        console.error("Error converting image to data URI:", error);
+        toast({
+          title: "Image Processing Error",
+          description: "Could not process the uploaded image. Please try another image.",
+          variant: "destructive",
+        });
+        return; 
+      }
+    }
+
+
     try {
       const fundingGoalSOL = values.fundingGoalIDR / effectiveRate;
       if (fundingGoalSOL <= 0) {
@@ -129,10 +169,11 @@ export function LaunchCampaignForm() {
         tokenTicker: values.tokenTicker,
         tokenName: values.tokenName,
         benefits: benefits,
+        imageUrl: imageUrl,
       };
       
       console.log("Campaign form submitted (values in IDR):", values);
-      console.log("Campaign data for API (goal in SOL, with benefits):", campaignDataForApi, "using rate:", effectiveRate);
+      console.log("Campaign data for API (goal in SOL, with benefits & image):", campaignDataForApi, "using rate:", effectiveRate);
       
       const result = await launchNewCampaign(campaignDataForApi);
       
@@ -143,6 +184,7 @@ export function LaunchCampaignForm() {
         duration: 7000,
       });
       form.reset(); 
+      setImagePreview(null);
     } catch (error) {
       console.error("Error launching campaign:", error);
       toast({
@@ -191,6 +233,52 @@ export function LaunchCampaignForm() {
                     <Textarea placeholder="Tell us all about your project..." {...field} className="min-h-[100px]" />
                   </FormControl>
                   <FormDescription>A detailed description of your project, its goals, and impact.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="featuredImage"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center">
+                    <ImageIcon className="mr-2 h-4 w-4 text-primary" />
+                    Featured Image
+                  </FormLabel>
+                  <FormControl>
+                     <Input 
+                      type="file" 
+                      accept="image/*"
+                      className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                      ref={field.ref}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          field.onChange(file);
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setImagePreview(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        } else {
+                          field.onChange(undefined);
+                          setImagePreview(null);
+                        }
+                      }}
+                      disabled={form.formState.isSubmitting}
+                    />
+                  </FormControl>
+                  {imagePreview && (
+                    <div className="mt-2 border border-border rounded-md p-2 inline-block">
+                      <Image src={imagePreview} alt="Featured image preview" width={200} height={100} className="rounded-md object-contain max-h-[150px]" data-ai-hint="campaign preview" />
+                    </div>
+                  )}
+                  <FormDescription>
+                    Upload a compelling image for your campaign (JPG, PNG, WEBP, GIF, max 5MB).
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
