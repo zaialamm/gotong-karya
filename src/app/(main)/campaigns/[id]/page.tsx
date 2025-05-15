@@ -19,7 +19,7 @@ import { EditionNftInfo } from "@/components/campaign-detail/EditionNftInfo";
 import { SupporterEditionInfo } from "@/components/campaign-detail/SupporterEditionInfo";
 import { useWallet } from "@/hooks/use-wallet";
 import { getRealTimeStatus, formatCampaignTimeRemaining, isMockCampaign } from "@/lib/campaign-utils";
-import { hasFundedCampaign } from "@/lib/wallet-storage";
+import { hasFundedCampaign, hasWithdrawnCampaign, storeWithdrawnCampaign } from "@/lib/wallet-storage";
 import { withdrawCampaignFunds } from "@/lib/web3";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,6 +37,14 @@ export default function CampaignDetailsPage() {
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [hasWithdrawn, setHasWithdrawn] = useState(false);
+  
+  // Check if the campaign has been withdrawn when the component loads
+  useEffect(() => {
+    if (address && campaignId) {
+      const withdrawn = hasWithdrawnCampaign(address, campaignId);
+      setHasWithdrawn(withdrawn);
+    }
+  }, [address, campaignId]);
 
   useEffect(() => {
     if (campaignId) {
@@ -104,8 +112,14 @@ export default function CampaignDetailsPage() {
         toast({
           title: "Funds withdrawn successfully!",
           description: "The funds have been transferred to your wallet (minus the 2.5% platform fee).",
-          variant: "success"
+          variant: "default"
         });
+        
+        // Store the withdrawal status in localStorage
+        if (address) {
+          storeWithdrawnCampaign(address, campaignId);
+        }
+        
         setHasWithdrawn(true);
       }
     } catch (error: any) {
