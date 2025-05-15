@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -18,13 +17,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { launchNewCampaign } from "@/lib/web3"; // Mock function
+import { useWallet } from "@/hooks/use-wallet"; // Import wallet hook
+import { launchNewCampaign } from "@/lib/web3";
+import { SuccessDialog } from "@/components/success-dialog"; // Import the success dialog component
 import { IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL } from "@/lib/constants";
-import { Rocket, RefreshCw, Gift, Image as ImageIcon } from "lucide-react";
+import { Rocket, RefreshCw, Gift, Image as ImageIcon, Sparkles, Wallet, AlertTriangle, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import Image from "next/image"; // For preview
 import { cn, formatToIDR, parseFromIDR } from "@/lib/utils";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
+import type { NftMetadata, NftAttribute } from "@/types";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -45,8 +47,10 @@ const formSchema = z.object({
   fundingGoalIDR: z.coerce.number({invalid_type_error: "Funding goal must be a number."})
     .positive("Funding goal in IDR must be a positive number.")
     .min(100000, `Minimum funding goal is ${formatToIDR(100000)}.`),
-  tokenTicker: z.string().min(2, "Token ticker must be 2-5 characters.").max(5).regex(/^[A-Z0-9]+$/, "Ticker must be uppercase letters/numbers."),
-  tokenName: z.string().min(5, "Token name must be at least 5 characters.").max(50),
+  nftName: z.string().min(5, "NFT name must be at least 5 characters.").max(50),
+  nftSymbol: z.string().min(2, "NFT symbol must be at least 2 characters.").max(10).regex(/^[A-Z0-9]+$/, "Symbol must be uppercase letters/numbers."),
+  nftDescription: z.string().min(10, "NFT description must be at least 10 characters.").max(500),
+  imageUrl: z.string().url("Please enter a valid metadata URL.").min(1, "Metadata URL is required."),
 });
 
 type LaunchCampaignFormValues = z.infer<typeof formSchema>;
@@ -62,8 +66,16 @@ const fileToDataUri = (file: File): Promise<string> => {
 
 export function LaunchCampaignForm() {
   const { toast } = useToast();
+  const { isConnected, address, connect } = useWallet(); // Use wallet hook
   const [solEquivalentDisplay, setSolEquivalentDisplay] = useState<string>("Enter IDR amount to see SOL equivalent.");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [urlImagePreview, setUrlImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  
+  // Success dialog state
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [campaignId, setCampaignId] = useState("");
+  const [transactionId, setTransactionId] = useState("");
   
   const {
     liveRate: liveSolToIdrRate,
@@ -79,33 +91,37 @@ export function LaunchCampaignForm() {
       projectName: "",
       description: "",
       benefitsInput: "",
-      featuredImage: undefined,
-      // fundingGoalIDR: undefined, // Default to undefined to allow placeholder to show properly
-      tokenTicker: "",
-      tokenName: "",
+      fundingGoalIDR: undefined,
+      nftName: "",
+      nftSymbol: "",
+      nftDescription: "",
+      imageUrl: "",
     },
     mode: "onChange",
   });
 
   const fundingGoalIDRValue = form.watch("fundingGoalIDR");
 
+  // Watch metadata URL for reference only
+  const imageUrlValue = form.watch("imageUrl");
+  
+  // No preview for metadata URLs - they're JSON files
+  useEffect(() => {
+    // Always keep preview null for metadata URLs
+    setUrlImagePreview(null);
+  }, [imageUrlValue]);
+
   useEffect(() => {
     const numericFundingGoal = typeof fundingGoalIDRValue === 'number' && !isNaN(fundingGoalIDRValue) ? fundingGoalIDRValue : 0;
 
     if (isLoadingRate) {
-      setSolEquivalentDisplay(`Fetching live ${SOL_CURRENCY_SYMBOL}/${IDR_CURRENCY_SYMBOL} rate...`);
+      setSolEquivalentDisplay("Loading current SOL to IDR rate...");
     } else if (rateError) {
-      const calculatedSOL = numericFundingGoal > 0 && hookFallbackRate > 0 ? numericFundingGoal / hookFallbackRate : 0;
-      const displayRate = `(Fallback rate: 1 ${SOL_CURRENCY_SYMBOL} = ${hookFallbackRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`;
-      if (calculatedSOL > 0) {
-        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL}. ${displayRate}`);
-      } else {
-        setSolEquivalentDisplay(`Error fetching rate. ${displayRate}`);
-      }
-    } else if (liveSolToIdrRate) {
+      setSolEquivalentDisplay(`Error loading rate: ${rateError}. Using fallback rate.`);
+    } else if (liveSolToIdrRate > 0) {
       if (numericFundingGoal > 0) {
         const calculatedSOL = numericFundingGoal / liveSolToIdrRate;
-        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
+        setSolEquivalentDisplay(`Approx. ${calculatedSOL.toFixed(4)} ${SOL_CURRENCY_SYMBOL} (at 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
       } else {
         setSolEquivalentDisplay(`Enter IDR amount. (Live rate: 1 ${SOL_CURRENCY_SYMBOL} = ${liveSolToIdrRate.toLocaleString()} ${IDR_CURRENCY_SYMBOL})`);
       }
@@ -119,77 +135,139 @@ export function LaunchCampaignForm() {
     }
   }, [fundingGoalIDRValue, liveSolToIdrRate, isLoadingRate, rateError, hookFallbackRate, IDR_CURRENCY_SYMBOL, SOL_CURRENCY_SYMBOL]);
 
-
   async function onSubmit(values: LaunchCampaignFormValues) {
     if (effectiveRate <= 0) {
        toast({
           title: "Rate Error",
           description: "Cannot calculate SOL equivalent. Exchange rate is invalid or not loaded.",
           variant: "destructive",
-        });
-        return;
+       });
+       return;
     }
 
-    let imageUrl = "https://picsum.photos/seed/new_default/600/400"; // Default fallback
-    if (values.featuredImage) {
-      try {
-        imageUrl = await fileToDataUri(values.featuredImage);
-      } catch (error) {
-        console.error("Error converting image to data URI:", error);
-        toast({
-          title: "Image Processing Error",
-          description: "Could not process the uploaded image. Please try another image.",
-          variant: "destructive",
-        });
-        return; 
-      }
+    // Process featured image
+    if (!values.featuredImage) {
+      toast({
+        title: "Image Required",
+        description: "Please upload an image for your campaign and NFT.",
+        variant: "destructive",
+      });
+      return;
     }
-
 
     try {
       const fundingGoalSOL = values.fundingGoalIDR / effectiveRate;
       if (fundingGoalSOL <= 0) {
         toast({
           title: "Invalid Amount",
-          description: "The calculated SOL amount is too small. Please increase the IDR funding goal or check the exchange rate.",
+          description: "Failed to calculate SOL amount. Please check the IDR value and try again.",
           variant: "destructive",
         });
         return;
       }
 
+      // Parse benefits into array and remove empty items
       const benefits = values.benefitsInput
-        .split('\n')
-        .map(b => b.trim())
-        .filter(b => b.length > 0);
+        .split("\n")
+        .map(item => item.trim())
+        .filter(item => item.length > 0);
+
+      if (benefits.length === 0) {
+        toast({
+          title: "Benefits Required",
+          description: "Please add at least one benefit for supporters.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Convert benefits to NFT attributes for metadata
+      const nftAttributes: NftAttribute[] = benefits.map((benefit, index) => ({
+        trait_type: `Benefit ${index + 1}`,
+        value: benefit
+      }));
+
+      toast({
+        title: "Creating Campaign NFT",
+        description: "Processing your request and creating the NFT...",
+        variant: "default",
+      });
+
+      // The metadata URL is now mandatory
+      const metadataUrl = values.imageUrl;
 
       const campaignDataForApi = {
         projectName: values.projectName,
         description: values.description,
         fundingGoalSOL: parseFloat(fundingGoalSOL.toFixed(4)),
-        tokenTicker: values.tokenTicker,
-        tokenName: values.tokenName,
+        nftName: values.nftName,
+        nftSymbol: values.nftSymbol,
+        nftDescription: values.nftDescription,
         benefits: benefits,
-        imageUrl: imageUrl,
+        imageUrl: values.imageUrl, // Pass the exact metadata URL to blockchain
+        nftAttributes: nftAttributes,
       };
       
-      console.log("Campaign form submitted (values in IDR):", values);
-      console.log("Campaign data for API (goal in SOL, with benefits & image):", campaignDataForApi, "using rate:", effectiveRate);
+      console.log('Submitting campaign data to blockchain:', campaignDataForApi);
       
-      const result = await launchNewCampaign(campaignDataForApi);
-      
-      toast({
-        title: "Campaign Creation Initiated!",
-        description: `${result.message} Funding goal: ${formatToIDR(values.fundingGoalIDR)} (~${campaignDataForApi.fundingGoalSOL} ${SOL_CURRENCY_SYMBOL}).`,
-        variant: "default",
-        duration: 7000,
-      });
-      form.reset(); 
-      setImagePreview(null);
+      try {
+        // This will now use the real blockchain integration
+        const result = await launchNewCampaign(campaignDataForApi);
+        
+        // Store campaign info for the success dialog
+        setCampaignId(result.campaignId);
+        setTransactionId(result.transactionId);
+        
+        // Show success notification with transaction link
+        toast({
+          title: "Campaign Created Successfully",
+          description: (
+            <div className="flex flex-col gap-2">
+              <span>Your campaign has been successfully launched!</span>
+              <a 
+                href={`https://explorer.solana.com/tx/${result.transactionId}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline flex items-center gap-1"
+              >
+                View transaction <ExternalLink className="h-3 w-3 inline" />
+              </a>
+            </div>
+          ),
+          variant: "success",
+        });
+        
+        // Show the success dialog
+        setSuccessDialogOpen(true);
+        
+        // Reset form
+        form.reset();
+        setUrlImagePreview(null);
+        
+      } catch (error: any) {
+        console.error("Error launching campaign on blockchain:", error);
+        
+        // Show detailed error to user
+        toast({
+          title: "Blockchain Transaction Failed",
+          description: `There was an error launching your campaign. ${error.message || ''}`,
+          variant: "destructive",
+        });
+        
+        // If there's an error code, show more technical details
+        if (error.code) {
+          toast({
+            title: "Technical Details",
+            description: `Error code: ${error.code}. Please try again or contact support.`,
+            variant: "destructive",
+          });
+        }
+      }
     } catch (error) {
       console.error("Error launching campaign:", error);
       toast({
         title: "Error",
-        description: "Failed to launch campaign. Please try again.",
+        description: "Failed to launch campaign with NFT. Please try again.",
         variant: "destructive",
       });
     }
@@ -216,9 +294,15 @@ export function LaunchCampaignForm() {
                 <FormItem>
                   <FormLabel>Project Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="E.g., My Awesome Game" {...field} />
+                    <Input
+                      placeholder="E.g., Bali Cultural Center"
+                      className="bg-background"
+                      {...field}
+                    />
                   </FormControl>
-                  <FormDescription>The official name of your project.</FormDescription>
+                  <FormDescription>
+                    This name will be displayed prominently on your campaign page.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -230,9 +314,15 @@ export function LaunchCampaignForm() {
                 <FormItem>
                   <FormLabel>Project Description</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Tell us all about your project..." {...field} className="min-h-[100px]" />
+                    <Textarea
+                      placeholder="Describe your project, its goals, and why it matters..."
+                      className="bg-background min-h-[100px]"
+                      {...field}
+                    />
                   </FormControl>
-                  <FormDescription>A detailed description of your project, its goals, and impact.</FormDescription>
+                  <FormDescription>
+                    Provide a detailed description of your project, its goals, timeline, and impact.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -242,136 +332,271 @@ export function LaunchCampaignForm() {
               name="benefitsInput"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center">
-                    <Gift className="mr-2 h-4 w-4 text-primary" />
-                    Supporter Benefits
-                  </FormLabel>
+                  <FormLabel>Backer Benefits</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="List the benefits supporters will receive, one per line. E.g.,&#10;- Exclusive digital badge&#10;- Early access to content&#10;- Name in credits"
+                      placeholder="Each benefit on a new line, e.g.&#10;Early access to the platform&#10;Digital thank you certificate&#10;Name in credits"
+                      className="bg-background min-h-[100px]"
                       {...field}
-                      className="min-h-[100px]"
                     />
                   </FormControl>
                   <FormDescription>
-                    Outline what backers get for supporting your project. Each benefit on a new line. At least one benefit is required.
+                    List the benefits backers will receive (one per line). These will be attached to the NFT.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="featuredImage"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center">
-                    <ImageIcon className="mr-2 h-4 w-4 text-primary" />
-                    Featured Image
-                  </FormLabel>
-                  <FormControl>
-                     <Input 
-                      type="file" 
-                      accept="image/*"
-                      className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                      ref={field.ref}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          field.onChange(file);
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setImagePreview(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
-                        } else {
-                          field.onChange(undefined);
-                          setImagePreview(null);
-                        }
-                      }}
-                      disabled={form.formState.isSubmitting}
-                    />
-                  </FormControl>
-                  {imagePreview && (
-                    <div className="mt-2 border border-border rounded-md p-2 inline-block">
-                      <Image src={imagePreview} alt="Featured image preview" width={200} height={150} className="rounded-md object-contain max-h-[200px]" data-ai-hint="campaign preview"/>
-                    </div>
-                  )}
-                  <FormDescription>
-                    Upload a compelling image for your campaign (JPG, PNG, WEBP, GIF, max 5MB).
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex flex-col space-y-4">
               <FormField
                 control={form.control}
                 name="fundingGoalIDR"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Funding Goal ({IDR_CURRENCY_SYMBOL})</FormLabel>
+                    <FormLabel>Funding Goal (IDR)</FormLabel>
                     <FormControl>
-                      <Input
-                        type="text"
-                        placeholder={hookFallbackRate > 0 ? formatToIDR(100000) : "Enter amount"}
-                        value={field.value === undefined || isNaN(field.value) ? '' : formatToIDR(field.value)}
-                        onChange={(e) => {
-                          const numericValue = parseFromIDR(e.target.value);
-                          field.onChange(isNaN(numericValue) ? undefined : numericValue);
-                        }}
-                        onBlur={(e) => { 
-                           const numericValue = parseFromIDR(e.target.value);
-                           field.onChange(isNaN(numericValue) ? undefined : numericValue);
-                        }}
-                      />
+                      <div className="flex items-center">
+                        <Input
+                          type="text"
+                          placeholder="5.000.000"
+                          className="bg-background"
+                          onChange={(e) => {
+                            const rawValue = e.target.value;
+                            // Remove all non-numeric characters before processing
+                            const numericOnly = rawValue.replace(/\D/g, '');
+                            const numericValue = parseFloat(numericOnly);
+                            
+                            if (!isNaN(numericValue)) {
+                              field.onChange(numericValue);
+                            } else {
+                              field.onChange(undefined);
+                            }
+                          }}
+                          // Format the number with thousand separators (using dots)
+                          value={field.value 
+                            ? field.value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') 
+                            : ''}
+                          onFocus={(e) => {
+                            // Optional: Move cursor to end when focused
+                            const val = e.target.value;
+                            e.target.value = '';
+                            e.target.value = val;
+                          }}
+                        />
+                        <span className="ml-2 font-semibold">{IDR_CURRENCY_SYMBOL}</span>
+                      </div>
                     </FormControl>
-                    <FormDescription>The amount of {IDR_CURRENCY_SYMBOL} you aim to raise.</FormDescription>
-                    <div className="text-xs text-muted-foreground mt-1 flex items-center pt-1 min-h-[1.5rem]">
-                        <RefreshCw className={cn("mr-1.5 h-3 w-3 text-primary", isLoadingRate && "animate-spin")}/>
-                        <span>{solEquivalentDisplay}</span>
+                    <div className="flex justify-between items-center">
+                      <FormDescription className="inline-block">
+                        Minimum: {formatToIDR(100000)}
+                      </FormDescription>
+                      <div className="text-sm text-muted-foreground flex items-center">
+                        <RefreshCw className={cn("h-3 w-3 mr-1", isLoadingRate && "animate-spin")} />
+                        {solEquivalentDisplay}
+                      </div>
                     </div>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-               <FormField
-                control={form.control}
-                name="tokenName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Token Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="E.g., gkbaliharmonyfestival" {...field} />
-                    </FormControl>
-                    <FormDescription>The full name of your project's token.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
-             <FormField
-                control={form.control}
-                name="tokenTicker"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Token Ticker</FormLabel>
-                    <FormControl>
-                      <Input placeholder="E.g., AWG (2-5 chars, uppercase)" {...field} />
-                    </FormControl>
-                    <FormDescription>A short, unique symbol for your project token (e.g., JUMBO).</FormDescription>
-                    <FormMessage />
-                  </FormItem>
+            <FormField
+                  control={form.control}
+                  name="featuredImage"
+                  render={({ field: { value, onChange, ...fieldProps } }) => (
+                    <FormItem>
+                      <FormLabel>Campaign Featured Image</FormLabel>
+                      <FormControl>
+                        <div>
+                          <Input
+                            type="file"
+                            className="hidden"
+                            id="campaign-image-upload"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setImageFile(file);
+                                onChange(file);
+                                fileToDataUri(file).then(dataUri => {
+                                  setImagePreview(dataUri);
+                                });
+                              }
+                            }}
+                            {...fieldProps}
+                          />
+                          <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-md border-primary/20 bg-background hover:border-primary/50 transition cursor-pointer" onClick={() => document.getElementById('campaign-image-upload')?.click()}>
+                            {imagePreview ? (
+                              <div className="flex flex-col items-center">
+                                <Image src={imagePreview} alt="Campaign image preview" width={200} height={150} className="rounded-md object-contain max-h-[200px]" />
+                                <span className="mt-2 text-sm text-muted-foreground">Click to change image</span>
+                              </div>
+                            ) : (
+                              <>
+                                <ImageIcon className="h-8 w-8 mb-2 text-primary/50" />
+                                <span className="text-sm text-muted-foreground">Click to select a featured image for your campaign</span>
+                                <span className="text-xs text-muted-foreground mt-1">(Max 5MB, JPG, PNG, WebP, or GIF)</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        This image will represent your campaign visually. It will be stored off-chain and used for display purposes.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+            <div className="bg-primary/5 p-4 rounded-md border border-primary/10">
+              <h3 className="text-lg font-semibold mb-4 flex items-center">
+                <Gift className="mr-2 h-5 w-5 text-primary" />
+                NFT Reward Details
+              </h3>
+              <div className="space-y-4">
+
+                <FormField
+                  control={form.control}
+                  name="nftName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>NFT Collection Name</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="E.g., Bali Cultural Center Supporter" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        This will be the official name of your NFT collection.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="nftDescription"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>NFT Description</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="E.g., This NFT represents your support for the Bali Cultural Center project..." 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormDescription>A clear description of what this NFT represents and its significance.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="nftSymbol"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>NFT Symbol</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="E.g., BALI (uppercase, 2-10 chars)" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        A short unique symbol for your NFT (like stock ticker).
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="imageUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>NFT Metadata URL</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="https://example.com/metadata.json" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Paste a URL to a JSON file that follows the Metaplex NFT metadata standard.
+                        The JSON should only include name, symbol, description, and image URL.
+                      </FormDescription>
+                      {imageUrlValue && imageUrlValue.trim() !== "" && (
+                        <div className="mt-2 p-2 bg-muted rounded-md">
+                          <p className="text-xs text-muted-foreground">Metadata URL detected. Make sure it points to a valid JSON file.</p>
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+              </div>
+            </div>
+            {!isConnected && (
+                  <div className="rounded-md bg-yellow-50 p-4 mb-4 border border-yellow-200">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <AlertTriangle className="h-5 w-5 text-yellow-400" aria-hidden="true" />
+                      </div>
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-yellow-800">Wallet connection required</h3>
+                        <div className="mt-2 text-sm text-yellow-700">
+                          <p>You need to connect your wallet before you can launch a campaign.</p>
+                        </div>
+                        <div className="mt-4">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={connect}
+                            className="bg-yellow-200 text-yellow-800 hover:bg-yellow-300"
+                          >
+                            <Wallet className="mr-2 h-4 w-4" />
+                            Connect Wallet
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
-              />
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={form.formState.isSubmitting || isLoadingRate}>
-              {form.formState.isSubmitting ? "Launching..." : (isLoadingRate ? "Loading Rate..." : "Launch Campaign")}
-            </Button>
+                <Button 
+                  type="submit" 
+                  className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" 
+                  disabled={form.formState.isSubmitting || isLoadingRate || !isConnected}
+                >
+                  {form.formState.isSubmitting ? "Creating NFT & Launching..." : 
+                   isLoadingRate ? "Loading Rate..." : 
+                   !isConnected ? "Connect Wallet to Launch" : 
+                   "Create NFT & Launch Campaign"}
+                </Button>
           </form>
         </Form>
       </CardContent>
     </Card>
+  );
+}
+
+// Add the SuccessDialog to the component render tree
+export function LaunchCampaignFormWithDialog() {
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [campaignId, setCampaignId] = useState("");
+  const [transactionId, setTransactionId] = useState("");
+
+  return (
+    <>
+      <LaunchCampaignForm />
+      <SuccessDialog
+        open={successDialogOpen}
+        onOpenChange={setSuccessDialogOpen}
+        campaignId={campaignId}
+        transactionId={transactionId}
+      />
+    </>
   );
 }

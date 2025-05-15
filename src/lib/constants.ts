@@ -1,11 +1,8 @@
-import type { Campaign, Creator, TokenInfo, UserTokenBalance, Trade } from '@/types';
+import type { Campaign, Creator } from '@/types';
 
 export const FALLBACK_SOL_TO_IDR_RATE = 800000; 
-export const SOL_TO_USD_RATE = 200; // This constant seems unused, consider removing if not needed elsewhere.
-export const MARKETPLACE_FEE_PERCENTAGE = 0.007; // 0.7%
-
-export const IPFS_LOGO_URL = "https://firestuff.storage.googleapis.com/v0/b/aidevs-407407.appspot.com/o/GotongKarya%20(2).png?alt=media&token=848b1577-9d94-4c2c-a964-291db9178fc0";
-export const IPFS_BATIK_BADGE_URL_BASE = "ipfs://QmBatikBadgeMockURL"; // Placeholder
+export const CAMPAIGN_DURATION_MINUTES = 10; // Default campaign duration in minutes (matches smart contract)
+export const ESCROW_PROGRAM_ID = 'GKtPETiRdkiVbpFEq8r7HjQpsWQr6PV7YgwJwJGrdgPp'; // GK Escrow program ID
 
 export const CREATORS_DATA: Creator[] = [
   { id: "creator1", name: "Jumbo Studio", walletAddress: "JumboWallet...", avatarUrl: "https://picsum.photos/seed/jumbo_avatar/40/40" },
@@ -13,6 +10,7 @@ export const CREATORS_DATA: Creator[] = [
   { id: "creator3", name: "Jakarta Street Art Collective", walletAddress: "JakartaArtWallet...", avatarUrl: "https://picsum.photos/seed/jakarta_avatar/40/40" },
 ];
 
+// Add nftSymbol property to all campaigns to match our updated interface
 export const CAMPAIGNS_DATA: Campaign[] = [
   {
     id: "campaign1",
@@ -22,12 +20,18 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     fundingGoalSOL: 50,
     raisedSOL: 30,
     status: "Running",
-    tokenTicker: "JUMBO",
-    tokenName: "Jumbo Animation Film Token",
-    imageUrl: "https://firestuff.storage.googleapis.com/v0/b/aidevs-407407.appspot.com/o/8c3bb582-770c-4617-8d62-df3169a0e306.png?alt=media&token=6561a078-1830-4d68-8341-9f239126df25", // Updated image URL
-    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 30 days from now
+    nftName: "Jumbo Animation Supporter NFT",
+    nftSymbol: "JUMBO", // Added NFT symbol
+    nftDescription: "Official supporter NFT for the Jumbo Animation Film project. Holders receive exclusive access to film screenings and behind-the-scenes content.",
+    nftMintAddress: "JumboNFT123456",
+    nftAttributes: [
+      { trait_type: "tier", value: "Founder" },
+      { trait_type: "edition", value: "Limited" }
+    ],
+    imageUrl: "https://th.bing.com/th/id/OIP.GyRtthUeXFeKRzFLoRbWEQHaE8?rs=1&pid=ImgDetMain", // Updated image URL
+    endDate: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutes from now (matches smart contract duration)
     benefits: [
-      "Receive exclusive JUMBO tokens.",
+      "Receive exclusive Jumbo Supporter NFT.",
       "Early access to film screenings.",
       "Your name in the film credits.",
       "Digital art book."
@@ -41,13 +45,19 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     fundingGoalSOL: 30,
     raisedSOL: 18,
     status: "Running",
-    tokenTicker: "BALI",
-    tokenName: "Bali Harmony Music Token",
+    nftName: "Bali Harmony Festival Supporter NFT",
+    nftSymbol: "BALI", // Added NFT symbol
+    nftDescription: "Official supporter NFT for the Bali Harmony Festival. NFT holders receive VIP access to all festival events and exclusive festival merchandise.",
+    nftMintAddress: "BaliNFT789012",
+    nftAttributes: [
+      { trait_type: "tier", value: "VIP" },
+      { trait_type: "access", value: "All Events" }
+    ],
     imageUrl: "https://picsum.photos/seed/bali_music/600/400",
-    endDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 45 days from now
+    endDate: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutes from now (matches smart contract duration)
     benefits: [
-      "Get BALI tokens for platform interactions.",
-      "Signed digital copy of the album.",
+      "Exclusive Gamelan Preservation Supporter NFT.",
+      "Access to exclusive recordings and performances.",
       "Behind-the-scenes content.",
       "Invitation to a virtual listening party."
     ],
@@ -60,12 +70,18 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     fundingGoalSOL: 40,
     raisedSOL: 10,
     status: "Running",
-    tokenTicker: "MURAL",
-    tokenName: "Nusantara Mural Art Token",
+    nftName: "Jakarta Mural Project Supporter NFT",
+    nftSymbol: "MURAL", // Added NFT symbol
+    nftDescription: "Official supporter NFT for the Jakarta Street Art Project. NFT holders get their name featured in the final mural and invitations to exclusive art events.",
+    nftMintAddress: "MuralNFT345678",
+    nftAttributes: [
+      { trait_type: "tier", value: "Patron" },
+      { trait_type: "recognition", value: "Name in Mural" }
+    ],
     imageUrl: "https://picsum.photos/seed/mural_art/600/400",
-    endDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Approx 60 days from now
+    endDate: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minutes from now (matches smart contract duration)
     benefits: [
-      "Collect MURAL tokens.",
+      "Official Jakarta Mural Project Supporter NFT.",
       "High-resolution photos of the murals.",
       "Acknowledgement on the project website.",
       "Limited edition sticker pack."
@@ -79,40 +95,61 @@ export const CAMPAIGNS_DATA: Campaign[] = [
     fundingGoalSOL: 25,
     raisedSOL: 28,
     status: "Successful",
-    tokenTicker: "ARCH",
-    tokenName: "Archipelago Game Token",
+    nftName: "Gamelan Music Preservation NFT",
+    nftSymbol: "ARCH", // Added NFT symbol
+    nftDescription: "Official supporter NFT for the Gamelan Music Preservation Project. NFT holders receive access to exclusive performances and digital archives.",
+    nftMintAddress: "GamelanNFT901234",
+    nftAttributes: [
+      { trait_type: "tier", value: "Preserver" },
+      { trait_type: "access", value: "Archives" }
+    ],
     imageUrl: "https://picsum.photos/seed/arch_game/600/400",
-    endDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
+    endDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days ago (this is a past campaign)
     benefits: [
-      "Received ARCH tokens.",
+      "Received limited edition Archipelago Game NFT.",
       "Digital copy of the rulebook.",
       "Exclusive game insights."
     ],
   },
 ];
 
-export const TOKENS_DATA: TokenInfo[] = [
-  { id: "token1", name: "Jumbo Animation Film Token", ticker: "JUMBO", logoUrl: "https://picsum.photos/seed/jumbo_token/32/32", currentPriceSOL: 0.006, creator: CREATORS_DATA[0] },
-  { id: "token2", name: "Bali Harmony Music Token", ticker: "BALI", logoUrl: "https://picsum.photos/seed/bali_token/32/32", currentPriceSOL: 0.005, creator: CREATORS_DATA[1] },
-  { id: "token3", name: "Nusantara Mural Art Token", ticker: "MURAL", logoUrl: "https://picsum.photos/seed/mural_token/32/32", currentPriceSOL: 0.006, creator: CREATORS_DATA[2] }, // Price for buy is 0.03 for 5 tokens, so 0.006 per token
-  { id: "token4", name: "Archipelago Game Token", ticker: "ARCH", logoUrl: "https://picsum.photos/seed/arch_token/32/32", currentPriceSOL: 0.007, creator: CREATORS_DATA[0] },
-];
+// NFT price reference for each project (SOL amount to support)
+export const NFT_PRICES = {
+  "JUMBO": 0.5,   // 0.5 SOL to support Jumbo Animation Film
+  "BALI": 0.3,    // 0.3 SOL to support Bali Harmony Music
+  "MURAL": 0.2,   // 0.2 SOL to support Nusantara Mural Art Series
+  "ARCH": 0.25,   // 0.25 SOL to support Archipelago Board Game
+};
 
-export const USER_BALANCES_DATA: UserTokenBalance[] = [
-  { tokenId: "token1", tokenTicker: "JUMBO", amount: 150 },
-  { tokenId: "token2", tokenTicker: "BALI", amount: 200 },
-  { tokenId: "token3", tokenTicker: "MURAL", amount: 50 },
-];
-
-export const TRADE_HISTORY_DATA: Trade[] = [
-  { id: "trade1", type: "sell", tokenTicker: "JUMBO", amountTokens: 10, pricePerTokenSOL: 0.006, totalAmountSOL: 0.06, feeSOL: 0.00042, netAmountSOL: 0.05958, timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), userAddress: "UserWallet1..." },
-  { id: "trade2", type: "sell", tokenTicker: "BALI", amountTokens: 10, pricePerTokenSOL: 0.005, totalAmountSOL: 0.05, feeSOL: 0.00035, netAmountSOL: 0.04965, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), userAddress: "UserWallet2..." },
-  { id: "trade3", type: "buy", tokenTicker: "MURAL", amountTokens: 5, pricePerTokenSOL: 0.006, totalAmountSOL: 0.03, feeSOL: 0.00021, totalPaidSOL: 0.03021, timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), userAddress: "UserWallet3..." },
+// Sample of supporter NFTs minted
+export const SUPPORTER_NFTS = [
+  { 
+    campaignId: "campaign1", 
+    supporterAddress: "Addr123...", 
+    nftMintAddress: "NFTAddr111...", 
+    amountSOL: 0.5,
+    timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "Completed"
+  },
+  { 
+    campaignId: "campaign2", 
+    supporterAddress: "Addr456...", 
+    nftMintAddress: "NFTAddr222...", 
+    amountSOL: 0.3,
+    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "Completed"
+  },
+  { 
+    campaignId: "campaign3", 
+    supporterAddress: "Addr789...", 
+    nftMintAddress: "NFTAddr333...", 
+    amountSOL: 0.2,
+    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "Pending"
+  },
 ];
 
 export const SOL_CURRENCY_SYMBOL = "SOL";
-export const USDC_CURRENCY_SYMBOL = "USDC";
-export const USDT_CURRENCY_SYMBOL = "USDT";
 export const IDR_CURRENCY_SYMBOL = "IDR";
 
 

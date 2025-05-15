@@ -12,26 +12,121 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CalendarDays, CheckCircle, Users, Tag, Hourglass, XCircle, HandCoins, Gift } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle, Users, Tag, Hourglass, XCircle, HandCoins, Gift, Sparkles, Loader2, Coins } from "lucide-react";
 import { FundModal } from "@/components/support-creators/FundModal";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { EditionNftInfo } from "@/components/campaign-detail/EditionNftInfo";
+import { SupporterEditionInfo } from "@/components/campaign-detail/SupporterEditionInfo";
+import { useWallet } from "@/hooks/use-wallet";
+import { getRealTimeStatus, formatCampaignTimeRemaining, isMockCampaign } from "@/lib/campaign-utils";
+import { hasFundedCampaign } from "@/lib/wallet-storage";
+import { withdrawCampaignFunds } from "@/lib/web3";
+import { useToast } from "@/hooks/use-toast";
 
 export default function CampaignDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string;
+  const { isConnected, address } = useWallet();
+  const { toast } = useToast();
   
   const [campaign, setCampaign] = useState<Campaign | undefined>(undefined);
   const [isFundModalOpen, setIsFundModalOpen] = useState(false);
   const [isLoadingCampaign, setIsLoadingCampaign] = useState(true);
+  const [realTimeStatus, setRealTimeStatus] = useState<string>('');
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [hasWithdrawn, setHasWithdrawn] = useState(false);
 
   useEffect(() => {
     if (campaignId) {
-      const foundCampaign = CAMPAIGNS_DATA.find((c) => c.id === campaignId);
+      // First check if campaign exists in mock data
+      let foundCampaign = CAMPAIGNS_DATA.find((c) => c.id === campaignId);
+      
+      // If not found in mock data, check localStorage for user-created campaigns
+      if (!foundCampaign && typeof window !== 'undefined') {
+        try {
+          // Import the storage utility
+          const { getUserCampaigns } = require('@/lib/storage');
+          const userCampaigns = getUserCampaigns();
+          foundCampaign = userCampaigns.find((c) => c.id === campaignId);
+          console.log('Checking localStorage for campaign:', campaignId, foundCampaign ? 'Found' : 'Not found');
+        } catch (error) {
+          console.error('Error fetching campaign from localStorage:', error);
+        }
+      }
+      
       setCampaign(foundCampaign);
+      
+      if (foundCampaign) {
+        // Set initial real-time status and time remaining
+        setRealTimeStatus(getRealTimeStatus(foundCampaign));
+        setTimeRemaining(formatCampaignTimeRemaining(foundCampaign));
+      }
+      
       setIsLoadingCampaign(false);
     }
   }, [campaignId]);
+  
+  // Check if the current user is the creator of this campaign
+  // Compare string values to avoid type errors
+  const isCreator = address && campaign?.creator && campaign.creator.toString() === address;
+  
+  // Handle fund withdrawal for campaign creator
+  const handleWithdrawFunds = async () => {
+    if (!isConnected || !address || !isCreator) {
+      toast({
+        title: "Cannot withdraw funds",
+        description: "You must be the campaign creator and the campaign must be fully funded.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      setIsWithdrawing(true);
+      
+      const result = await withdrawCampaignFunds(campaignId);
+      
+      if (result.success) {
+        toast({
+          title: "Funds withdrawn successfully!",
+          description: "The funds have been transferred to your wallet (minus the 2.5% platform fee).",
+          variant: "success"
+        });
+        setHasWithdrawn(true);
+      }
+    } catch (error: any) {
+      console.error("Error withdrawing funds:", error);
+      toast({
+        title: "Withdrawal failed",
+        description: error.message || "There was an error withdrawing funds. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
+  
+  useEffect(() => {
+    if (campaign) {
+      // Set initial values
+      setIsLoadingCampaign(false);
+      setRealTimeStatus(getRealTimeStatus(campaign));
+      setTimeRemaining(formatCampaignTimeRemaining(campaign));
+      
+      // Update the real-time status and time remaining every second
+      const interval = setInterval(() => {
+        if (campaign) {
+          const status = getRealTimeStatus(campaign);
+          setRealTimeStatus(status);
+          setTimeRemaining(formatCampaignTimeRemaining(campaign));
+        }
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [campaign]);
 
   const { effectiveRate, isLoading: isLoadingRate } = useSolToIdrRate();
 
@@ -69,17 +164,38 @@ export default function CampaignDetailsPage() {
   const goalIDR = fundingGoalSOL * effectiveRate;
 
   const getStatusBadgeDetails = () => {
-    switch (status) {
+    switch (realTimeStatus || status) {
       case "Running":
-        return <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 text-white text-sm px-3 py-1"><Hourglass className="mr-2 h-4 w-4" />Running</Badge>;
+        return (
+          <div className="flex flex-col gap-2">
+            <Badge variant="default" className="bg-green-600/80 hover:bg-green-600 text-white text-sm px-3 py-1">
+              <Hourglass className="mr-2 h-4 w-4" />Running
+            </Badge>
+            {timeRemaining !== 'No end date' && timeRemaining !== 'Expired' && (
+              <div className="flex items-center text-sm text-muted-foreground">
+                <CalendarDays className="mr-2 h-4 w-4 text-primary/70" />
+                {timeRemaining}
+              </div>
+            )}
+          </div>
+        );
       case "Successful":
         return <Badge variant="default" className="bg-blue-600/80 hover:bg-blue-600 text-white text-sm px-3 py-1"><CheckCircle className="mr-2 h-4 w-4" />Successful</Badge>;
       case "Failed":
-        return <Badge variant="destructive" className="text-sm px-3 py-1"><XCircle className="mr-2 h-4 w-4" />Failed</Badge>;
-      case "Past":
-         return <Badge variant="secondary" className="text-sm px-3 py-1"><CalendarDays className="mr-2 h-4 w-4" />Past</Badge>;
+        return (
+          <div className="flex flex-col gap-2">
+            <Badge variant="destructive" className="text-sm px-3 py-1"><XCircle className="mr-2 h-4 w-4" />Failed</Badge>
+            {timeRemaining === 'Expired' && (
+              <div className="flex items-center text-sm text-muted-foreground">
+                <CalendarDays className="mr-2 h-4 w-4 text-destructive/70" />
+                Campaign expired
+              </div>
+            )}
+          </div>
+        );
+
       default:
-        return <Badge variant="outline" className="text-sm px-3 py-1">{status}</Badge>;
+        return <Badge variant="outline" className="text-sm px-3 py-1">{realTimeStatus || status}</Badge>;
     }
   };
 
@@ -167,25 +283,117 @@ export default function CampaignDetailsPage() {
               {endDate && (
                 <div className="text-sm flex items-center text-muted-foreground">
                   <CalendarDays className="mr-2 h-4 w-4" />
-                  <span>{status === "Running" ? `Ends: ${new Date(endDate).toLocaleDateString()}` : `Ended: ${new Date(endDate).toLocaleDateString()}`}</span>
+                  <span>
+                    {campaign && isMockCampaign(campaign) ? 
+                      // For mock campaigns, show different dates based on their ID
+                      (realTimeStatus === "Running" ? 
+                        `Ends: ${(parseInt(campaign.id.replace('campaign', '')) * 5 + 20)}/01/2026` : 
+                        `Ended: ${(parseInt(campaign.id.replace('campaign', '')) * 3 + 15)}/12/2025`
+                      ) : 
+                      // For real campaigns, show actual dates
+                      (realTimeStatus === "Running" ? 
+                        `Ends: ${new Date(endDate).toLocaleDateString()}` : 
+                        `Ended: ${new Date(endDate).toLocaleDateString()}`
+                      )
+                    }
+                  </span>
                 </div>
               )}
             </Card>
           </div>
+
+          {/* Edition NFT Information Section */}
+          <div className="mt-8 space-y-6">
+            <h2 className="text-2xl font-semibold text-foreground flex items-center">
+              <Sparkles className="mr-2 h-5 w-5 text-primary" /> Edition NFT Rewards
+            </h2>
+            
+            {/* Display information about the edition NFTs */}
+            <EditionNftInfo 
+              campaignId={campaignId}
+              maxEditions={5} // This would come from the campaign data in a real implementation
+              editionsMinted={campaign?.supporters?.length || 0} // This would come from the campaign data
+              isFunded={status === "Successful" || status === "Completed"}
+            />
+
+            {/* Display the supporter's edition NFT if they have contributed */}
+            {isConnected && address && (
+              <SupporterEditionInfo
+                campaignId={campaignId}
+                walletAddress={address}
+                hasContributed={campaign?.supporters?.some(s => s.walletAddress === address) || false}
+                editionNumber={campaign?.supporters?.findIndex(s => s.walletAddress === address) + 1 || 0}
+                editionMint="" // This would come from the blockchain in a real implementation
+              />
+            )}
+          </div>
           
         </CardContent>
-        {status === "Running" && (
-            <CardFooter>
-                <Button onClick={() => setIsFundModalOpen(true)} size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground text-base py-6">
+        <CardFooter className="flex flex-col sm:flex-row gap-4">
+            {/* Show withdraw button for creator when campaign is fully funded */}
+            {isCreator && (realTimeStatus === "Successful" || (campaign && campaign.raisedSOL >= campaign.fundingGoalSOL)) && !hasWithdrawn && (
+              <Button 
+                onClick={handleWithdrawFunds} 
+                size="lg" 
+                className="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white text-base py-6"
+                disabled={isWithdrawing}
+              >
+                {isWithdrawing ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
+                  </>
+                ) : (
+                  <>
+                    <Coins className="mr-2 h-5 w-5" /> Withdraw Funds
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Show already withdrawn message for creator */}
+            {isCreator && (realTimeStatus === "Successful" || (campaign && campaign.raisedSOL >= campaign.fundingGoalSOL)) && hasWithdrawn && (
+              <Button 
+                size="lg" 
+                className="w-full md:w-auto bg-muted text-muted-foreground text-base py-6 cursor-not-allowed"
+                disabled
+              >
+                <CheckCircle className="mr-2 h-5 w-5" /> Funds Withdrawn
+              </Button>
+            )}
+            
+            {/* Support button - only show during active campaign */}
+            {realTimeStatus === "Running" && (
+              <>
+                {address && hasFundedCampaign(address, campaignId) ? (
+                  // Already supported button - disabled
+                  <Button 
+                    size="lg" 
+                    className="w-full md:w-auto bg-muted text-muted-foreground text-base py-6 cursor-not-allowed"
+                    disabled
+                  >
+                    <CheckCircle className="mr-2 h-5 w-5" /> Already Supported
+                  </Button>
+                ) : (
+                  // Standard support button
+                  <Button 
+                    onClick={() => setIsFundModalOpen(true)} 
+                    size="lg" 
+                    className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground text-base py-6"
+                  >
                     <HandCoins className="mr-2 h-5 w-5" /> Support this Project
-                </Button>
-            </CardFooter>
-        )}
+                    {timeRemaining !== 'No end date' && timeRemaining !== 'Expired' && (
+                      <span className="ml-2 text-xs bg-accent-foreground/20 px-2 py-1 rounded-full">{timeRemaining}</span>
+                    )}
+                  </Button>
+                )}
+              </>
+            )}
+        </CardFooter>
       </Card>
 
        {/* Add sections for updates, FAQ, comments if needed in future */}
     </div>
-    {campaign && status === "Running" && (
+    {campaign && realTimeStatus === "Running" && (
         <FundModal
           campaign={campaign}
           isOpen={isFundModalOpen}

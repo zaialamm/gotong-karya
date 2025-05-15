@@ -1,3 +1,5 @@
+// Re-export NFT types
+export * from './nft';
 
 export interface Creator {
   id: string;
@@ -6,7 +8,16 @@ export interface Creator {
   avatarUrl?: string; // Placeholder for creator avatar
 }
 
-export type CampaignStatus = "Running" | "Past" | "Successful" | "Failed";
+export type CampaignStatus = "Running" | "Successful" | "Failed" | "Completed";
+
+export interface Supporter {
+  walletAddress: string;
+  contributionAmount: number;
+  nftMinted: boolean;
+  editionNumber?: number;
+  editionMint?: string;
+  contributionDate: string;
+}
 
 export interface Campaign {
   id: string;
@@ -16,39 +27,55 @@ export interface Campaign {
   fundingGoalSOL: number;
   raisedSOL: number;
   status: CampaignStatus;
-  tokenTicker: string;
-  tokenName: string; // e.g., "Jumbo Animation Film Token"
-  tokenMetadata?: string; // e.g., "Create Jumbo Animation Film Token"
+  nftName: string; 
+  nftSymbol: string; 
+  nftDescription?: string; 
+  nftMintAddress?: string; 
   imageUrl: string;
-  endDate?: string; // Optional end date for campaign
-  benefits?: string[]; // List of benefits for supporters
+  startDate?: string;
+  endDate?: string;
+  benefits?: string[];
+  supporters?: Supporter[];
+  editionNftInfo?: {
+    maxEditions: number;
+    editionsMinted: number;
+    automaticMinting: boolean;
+  };
+  supportersCount?: number; 
+  nftAttributes?: Array<{trait_type: string, value: string | number}>; // NFT attributes
 }
 
-export interface TokenInfo {
+// NFT transaction interfaces for supporter funding
+export interface NftPurchase {
   id: string;
-  name: string; 
-  ticker: string; 
-  logoUrl?: string; 
-  currentPriceSOL?: number; // For marketplace
-  creator?: Creator; // Creator of the token/project
-}
-
-export interface UserTokenBalance {
-  tokenId: string;
-  tokenTicker: string;
-  amount: number;
-}
-
-export interface Trade {
-  id: string;
-  type: "buy" | "sell";
-  tokenTicker: string;
-  amountTokens: number;
-  pricePerTokenSOL: number;
-  totalAmountSOL: number; 
-  feeSOL: number;
-  netAmountSOL?: number; 
-  totalPaidSOL?: number; 
+  campaignId: string;
+  supporterAddress: string;
+  amountSOL: number;
+  nftMintAddress: string;
   timestamp: string; // ISO string date
-  userAddress?: string; // Mock user address
+  status: "Pending" | "Completed" | "Refunded";
+  txSignature: string; // Solana transaction signature
+}
+
+// Campaign funding result
+export interface FundingResult {
+  success: boolean;
+  signature: string; // Transaction signature
+  campaignId: string;
+  message: string;
+  amount: number; // Amount of SOL contributed
+  isCampaignFunded: boolean;
+  raisedAmount: number; // Total raised in SOL
+  supporterFundingId: string; // PDA of the supporter funding account
+  editionInfo?: {
+    maxEditions: number;
+    editionsMinted: number;
+    automaticMinting: boolean;
+    message: string;
+  } | null;
+  editionMintResult?: {
+    success: boolean;
+    editionMint: string;
+    signature: string;
+  } | null;
 }

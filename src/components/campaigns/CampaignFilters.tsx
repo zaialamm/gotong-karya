@@ -10,7 +10,7 @@ interface CampaignFiltersProps {
   onFilterChange: (filter: CampaignStatus | "All") => void;
 }
 
-const filterOptions: (CampaignStatus | "All")[] = ["All", "Running", "Successful", "Past", "Failed"];
+const filterOptions: (CampaignStatus | "All")[] = ["All", "Running", "Successful", "Failed"];
 
 export function CampaignFilters({ currentFilter, onFilterChange }: CampaignFiltersProps) {
   return (

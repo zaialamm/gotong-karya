@@ -1,10 +1,18 @@
 
 import { NextResponse } from 'next/server';
 
+// Fallback SOL to IDR rate if the API fails
+const FALLBACK_SOL_TO_IDR_RATE = 2200000; // Approximate value - adjust as needed
+
 export async function GET() {
   try {
+    // Add API key if you have one to reduce rate limiting issues
     const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=idr', {
-      next: { revalidate: 60 } // Revalidate every 60 seconds
+      next: { revalidate: 60 }, // Revalidate every 60 seconds
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Gotong Karya App'
+      }
     });
 
     if (!response.ok) {
@@ -32,9 +40,17 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error in /api/exchange-rate:', error);
+    
+    // Return a fallback rate instead of an error
+    console.info('Using fallback exchange rate:', FALLBACK_SOL_TO_IDR_RATE);
     return NextResponse.json(
-      { error: (error as Error).message || 'Failed to fetch exchange rate' },
-      { status: 500, headers: { 'Cache-Control': 'no-store' } } // Don't cache errors
+      { rate: FALLBACK_SOL_TO_IDR_RATE, isFallback: true },
+      { 
+        headers: { 
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          'X-Using-Fallback': 'true'
+        } 
+      }
     );
   }
 }

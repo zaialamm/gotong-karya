@@ -9,20 +9,21 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    // Allow images from all domains without restrictions
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'picsum.photos',
-        port: '',
-        pathname: '/**',
+        hostname: '**',
+        pathname: '**',
       },
       {
-        protocol: 'https',
-        hostname: 'firestuff.storage.googleapis.com',
-        port: '',
-        pathname: '/**',
+        protocol: 'http',
+        hostname: '**',
+        pathname: '**',
       }
     ],
+    // Disable size optimization to allow any image
+    unoptimized: true,
   },
 };
 
