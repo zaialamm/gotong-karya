@@ -36,23 +36,41 @@ export const getRealTimeStatus = (campaign: Campaign): string => {
   // First check if the campaign is fully funded (100% or more)
   const percentFunded = (campaign.raisedSOL / campaign.fundingGoalSOL) * 100;
   const isFullyFunded = percentFunded >= 100;
+  const hasExpired = hasCampaignExpired(campaign);
+  
+  // Debug information for campaign status
+  console.log('Campaign Status Debug:', {
+    id: campaign.id,
+    currentStatus: campaign.status,
+    percentFunded,
+    isFullyFunded,
+    hasExpired,
+    endDate: campaign.endDate,
+    currentTime: new Date().toISOString(),
+    raisedSOL: campaign.raisedSOL,
+    fundingGoalSOL: campaign.fundingGoalSOL
+  });
   
   // If campaign is fully funded, mark as Successful regardless of other status
   if (isFullyFunded) {
+    console.log(`Campaign ${campaign.id} is fully funded, marking as Successful`);
     return 'Successful';
   }
   
   // If campaign is already marked as Failed, keep that status
   if (campaign.status === 'Failed') {
+    console.log(`Campaign ${campaign.id} is already marked as Failed`);
     return campaign.status;
   }
   
   // If campaign is Running but has expired, mark as Failed
-  if (campaign.status === 'Running' && hasCampaignExpired(campaign)) {
+  if (campaign.status === 'Running' && hasExpired) {
+    console.log(`Campaign ${campaign.id} has expired without reaching goal, marking as Failed`);
     return 'Failed';
   }
   
   // Otherwise, return the current status
+  console.log(`Campaign ${campaign.id} status remains ${campaign.status}`);
   return campaign.status;
 };
 

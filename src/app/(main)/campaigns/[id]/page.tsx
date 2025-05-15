@@ -19,8 +19,8 @@ import { EditionNftInfo } from "@/components/campaign-detail/EditionNftInfo";
 import { SupporterEditionInfo } from "@/components/campaign-detail/SupporterEditionInfo";
 import { useWallet } from "@/hooks/use-wallet";
 import { getRealTimeStatus, formatCampaignTimeRemaining, isMockCampaign } from "@/lib/campaign-utils";
-import { hasFundedCampaign, hasWithdrawnCampaign, storeWithdrawnCampaign } from "@/lib/wallet-storage";
-import { withdrawCampaignFunds } from "@/lib/web3";
+import { hasFundedCampaign, hasWithdrawnCampaign, storeWithdrawnCampaign, hasRefundedCampaign, storeRefundedCampaign } from "@/lib/wallet-storage";
+import { withdrawCampaignFunds, claimRefund } from "@/lib/web3";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CampaignDetailsPage() {
@@ -37,12 +37,19 @@ export default function CampaignDetailsPage() {
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [hasWithdrawn, setHasWithdrawn] = useState(false);
+  const [isRefunding, setIsRefunding] = useState(false);
+  const [hasRefunded, setHasRefunded] = useState(false);
   
-  // Check if the campaign has been withdrawn when the component loads
+  // Check if the campaign has been withdrawn or refunded when the component loads
   useEffect(() => {
     if (address && campaignId) {
+      // Check if creator has withdrawn funds
       const withdrawn = hasWithdrawnCampaign(address, campaignId);
       setHasWithdrawn(withdrawn);
+      
+      // Check if supporter has claimed refund
+      const refunded = hasRefundedCampaign(address, campaignId);
+      setHasRefunded(refunded);
     }
   }, [address, campaignId]);
 
@@ -131,6 +138,66 @@ export default function CampaignDetailsPage() {
       });
     } finally {
       setIsWithdrawing(false);
+    }
+  };
+  
+  // Handle refund claim for campaign supporters
+  const handleClaimRefund = async () => {
+    if (!isConnected || !address || !hasFundedCampaign(address, campaignId)) {
+      toast({
+        title: "Cannot claim refund",
+        description: "You must have supported this campaign to claim a refund.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      setIsRefunding(true);
+      
+      const result = await claimRefund(campaignId);
+      
+      if (result.success) {
+        // Create a nice HTML message with a clickable link to Solana Explorer
+        const htmlMessage = (
+          <div>
+            <p>Your funds have been returned to your wallet.</p>
+            <p className="mt-2">
+              <a 
+                href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-primary font-medium hover:text-primary/90"
+              >
+                View Transaction on Explorer
+              </a>
+            </p>
+          </div>
+        );
+
+        toast({
+          title: "Refund claimed successfully!",
+          description: htmlMessage,
+          variant: "default",
+          duration: 5000
+        });
+        
+        // Store the refund status in localStorage
+        if (address) {
+          storeRefundedCampaign(address, campaignId);
+        }
+        
+        setHasRefunded(true);
+      }
+    } catch (error: any) {
+      console.error("Error claiming refund:", error);
+      toast({
+        title: "Refund failed",
+        description: error.message || "There was an error claiming your refund. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRefunding(false);
     }
   };
   
@@ -384,6 +451,37 @@ export default function CampaignDetailsPage() {
                 disabled
               >
                 <CheckCircle className="mr-2 h-5 w-5" /> Funds Withdrawn
+              </Button>
+            )}
+            
+            {/* Show refund button for supporters when campaign has failed */}
+            {!isCreator && realTimeStatus === "Failed" && hasFundedCampaign(address || "", campaignId) && !hasRefunded && (
+              <Button 
+                onClick={handleClaimRefund} 
+                size="lg" 
+                className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white text-base py-6"
+                disabled={isRefunding}
+              >
+                {isRefunding ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
+                  </>
+                ) : (
+                  <>
+                    <Coins className="mr-2 h-5 w-5" /> Claim Refund
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Show already refunded message for supporters */}
+            {!isCreator && realTimeStatus === "Failed" && hasFundedCampaign(address || "", campaignId) && hasRefunded && (
+              <Button 
+                size="lg" 
+                className="w-full md:w-auto bg-muted text-muted-foreground text-base py-6 cursor-not-allowed"
+                disabled
+              >
+                <CheckCircle className="mr-2 h-5 w-5" /> Refund Claimed
               </Button>
             )}
             

@@ -967,6 +967,65 @@ export const launchNewCampaign = async (formData: {
   }
 };
 
+// Function for supporters to claim refunds when a campaign fails to meet its goal
+export const claimRefund = async (
+  campaignId: string
+): Promise<{ success: boolean; signature: string; amountLamports: number }> => {
+  try {
+    // Check if Phantom wallet is connected
+    const provider = await getAnchorProvider();
+    if (!provider) {
+      throw new Error('Wallet not connected');
+    }
+
+    const connection = getSolanaConnection();
+    const program = getGkEscrowProgram();
+    
+    // Get supporter's wallet address
+    const supporterPubkey = provider.wallet.publicKey;
+    
+    // Find the campaign PDA
+    const campaignPubkey = new web3.PublicKey(campaignId);
+    
+    // Derive the supporter funding PDA
+    const [supporterFundingPDA] = web3.PublicKey.findProgramAddressSync(
+      [
+        Buffer.from('supporter-funding'),
+        campaignPubkey.toBuffer(),
+        supporterPubkey.toBuffer(),
+      ],
+      program.programId
+    );
+    
+    console.log('Claiming refund from campaign:', campaignId);
+    console.log('Supporter:', supporterPubkey.toString());
+    console.log('Supporter funding PDA:', supporterFundingPDA.toString());
+    
+    // Call the claim_refund instruction
+    const tx = await program.methods
+      .claimRefund()
+      .accounts({
+        campaign: campaignPubkey,
+        supporter: supporterPubkey,
+        supporterFunding: supporterFundingPDA,
+      })
+      .rpc();
+    
+    console.log('Refund transaction successful:', tx);
+    
+    // For a real implementation, we would query the transaction to get the exact amount
+    // For now, we'll return a placeholder
+    return {
+      success: true,
+      signature: tx,
+      amountLamports: 0 // This would be the actual amount in a real implementation
+    };
+  } catch (error) {
+    console.error('Error claiming refund:', error);
+    throw error;
+  }
+};
+
 // Function for campaign creators to withdraw funds when campaign is fully funded
 export const withdrawCampaignFunds = async (
   campaignId: string

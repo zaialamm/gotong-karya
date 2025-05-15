@@ -1,7 +1,8 @@
 // Define storage keys for wallet-related data
 export const WALLET_STORAGE_KEYS = {
   FUNDED_CAMPAIGNS: 'gk-funded-campaigns',
-  WITHDRAWN_CAMPAIGNS: 'gk-withdrawn-campaigns'
+  WITHDRAWN_CAMPAIGNS: 'gk-withdrawn-campaigns',
+  REFUNDED_CAMPAIGNS: 'gk-refunded-campaigns'
 };
 
 /**
@@ -121,6 +122,67 @@ export const hasWithdrawnCampaign = (walletAddress: string, campaignId: string):
     }
   } catch (error) {
     console.error('Error checking withdrawn campaigns in localStorage:', error);
+  }
+  
+  return false;
+};
+
+/**
+ * Store refunded campaign in localStorage
+ * @param walletAddress Supporter's wallet address
+ * @param campaignId Campaign ID that was refunded
+ */
+export const storeRefundedCampaign = (walletAddress: string, campaignId: string): void => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || !walletAddress) return;
+  
+  const storageKey = `${WALLET_STORAGE_KEYS.REFUNDED_CAMPAIGNS}-${walletAddress}`;
+  
+  // Get existing refunded campaigns for this wallet
+  let refundedCampaigns: string[] = [];
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      refundedCampaigns = JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error retrieving refunded campaigns from localStorage:', error);
+  }
+  
+  // Add the campaign if it's not already there
+  if (!refundedCampaigns.includes(campaignId)) {
+    refundedCampaigns.push(campaignId);
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(refundedCampaigns));
+      console.log(`Campaign ${campaignId} marked as refunded for supporter ${walletAddress}`);
+    } catch (error) {
+      console.error('Error storing refunded campaign in localStorage:', error);
+    }
+  }
+};
+
+/**
+ * Check if a campaign has been refunded to a specific wallet
+ * @param walletAddress Supporter's wallet address
+ * @param campaignId Campaign ID to check
+ * @returns boolean indicating if the wallet has received a refund for this campaign
+ */
+export const hasRefundedCampaign = (walletAddress: string, campaignId: string): boolean => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || !walletAddress) return false;
+  
+  const storageKey = `${WALLET_STORAGE_KEYS.REFUNDED_CAMPAIGNS}-${walletAddress}`;
+  
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const refundedCampaigns: string[] = JSON.parse(stored);
+      return refundedCampaigns.includes(campaignId);
+    }
+  } catch (error) {
+    console.error('Error checking refunded campaigns in localStorage:', error);
   }
   
   return false;
