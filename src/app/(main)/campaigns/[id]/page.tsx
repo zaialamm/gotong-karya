@@ -69,8 +69,20 @@ export default function CampaignDetailsPage() {
   }, [campaignId]);
   
   // Check if the current user is the creator of this campaign
-  // Compare string values to avoid type errors
-  const isCreator = address && campaign?.creator && campaign.creator.toString() === address;
+  // Access the walletAddress property of the creator object
+  const isCreator = address && campaign?.creator?.walletAddress === address;
+  
+  // Debug logs to diagnose creator address comparison
+  console.log("Creator check:", {
+    connectedAddress: address,
+    campaignCreator: campaign?.creator?.walletAddress,
+    isMatch: campaign?.creator?.walletAddress === address,
+    raisedSOL: campaign?.raisedSOL,
+    fundingGoalSOL: campaign?.fundingGoalSOL,
+    isFunded: campaign?.raisedSOL >= campaign?.fundingGoalSOL,
+    realTimeStatus,
+    showWithdrawButton: isCreator && (realTimeStatus === "Successful" || (campaign && campaign.raisedSOL >= campaign.fundingGoalSOL))
+  });
   
   // Handle fund withdrawal for campaign creator
   const handleWithdrawFunds = async () => {
