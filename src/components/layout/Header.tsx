@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/s
 import { cn } from "@/lib/utils";
 
 const navLinks = [
+  { href: "/", label: "Home" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/launch-campaign", label: "Launch Campaign" },
   { href: "/support-creators", label: "Support Creators" },
@@ -88,7 +89,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="w-full flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/campaigns" className="flex items-center gap-2 mr-4">
+        <Link href="/" className="flex items-center gap-2 mr-4">
           <LogoComponent />
         </Link>
         
@@ -112,7 +113,7 @@ export function Header() {
             <SheetContent side="right" className="w-full max-w-xs bg-background p-6">
               <div className="flex flex-col h-full">
                 <div className="flex justify-between items-center mb-8">
-                   <Link href="/campaigns" className="flex items-center gap-2">
+                   <Link href="/" className="flex items-center gap-2">
                      <LogoComponent />
                    </Link>
                   <SheetClose asChild>

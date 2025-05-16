@@ -100,10 +100,28 @@ const createMetaplexNft = async (
       },
       signTransaction: async (transaction: any) => {
         console.log("Signing transaction...");
+        if (!provider) {
+          console.error("Wallet provider not found. Reconnecting...");
+          await connectPhantomWallet(); // Try to reconnect
+          const updatedProvider = window.phantom?.solana;
+          if (!updatedProvider) {
+            throw new Error("Wallet provider not available. Please refresh the page and try again.");
+          }
+          return await updatedProvider.signTransaction(transaction);
+        }
         return await provider.signTransaction(transaction);
       },
       signAllTransactions: async (transactions: any[]) => {
         console.log("Signing all transactions...");
+        if (!provider) {
+          console.error("Wallet provider not found when signing multiple transactions. Reconnecting...");
+          await connectPhantomWallet(); // Try to reconnect
+          const updatedProvider = window.phantom?.solana;
+          if (!updatedProvider) {
+            throw new Error("Wallet provider not available. Please refresh the page and try again.");
+          }
+          return await updatedProvider.signAllTransactions(transactions);
+        }
         return await provider.signAllTransactions(transactions);
       },
     };
@@ -305,7 +323,7 @@ export const fundCampaign = async (
         console.error("Funding error:", error);
         throw new Error(`Failed to fund campaign: ${error.message}`);
       }
-    }
+    } 
     
     // Add a short delay if transaction was already processed to ensure chain consistency
     if (transactionAlreadyProcessed) {
@@ -756,7 +774,7 @@ export const launchNewCampaign = async (formData: {
         message: "Campaign created successfully and NFT transferred to escrow!",
         transactionId: txSignature
       };
-    } catch (txError) {
+    } catch (txError: any) {
       // Check if the error is because the transaction was already processed
       if (txError.message?.includes('Transaction was already processed')) {
         // This could mean the transaction was successful but we got a duplicate response
@@ -764,7 +782,7 @@ export const launchNewCampaign = async (formData: {
         let extractedSignature = '';
         
         // Some errors include the signature in the message
-        const signatureMatch = error.message.match(/signature ([A-Za-z0-9]+)/);
+        const signatureMatch = txError.message.match(/signature ([A-Za-z0-9]+)/);
         if (signatureMatch && signatureMatch[1]) {
           extractedSignature = signatureMatch[1];
           console.log("Extracted transaction signature:", extractedSignature);
@@ -782,15 +800,15 @@ export const launchNewCampaign = async (formData: {
       }
       
       // Handle the case where the campaign PDA already exists
-      if (error.message?.includes('already in use') || 
-          error.message?.includes('account already exists')) {
+      if (txError.message?.includes('already in use') || 
+          txError.message?.includes('account already exists')) {
         console.error("Campaign with this name already exists");
         throw new Error(`A campaign with the name "${formData.projectName}" already exists. Please choose a different name.`);
       }
       
       // Re-throw any other errors with more details
-      console.error("Error creating campaign:", error);
-      throw new Error(`Failed to create campaign: ${error.message}`);
+      console.error("Error creating campaign:", txError);
+      throw new Error(`Failed to create campaign: ${txError instanceof Error ? txError.message : String(txError)}`);
     }
 
   } catch (error: any) {
