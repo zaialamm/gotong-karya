@@ -74,10 +74,5 @@ The platform is powered by the `gkescrow` Solana program with key functions:
 
 The application is configured for Solana devnet for development and testing purposes.
 
-## 📝 License
 
-[Your License Information]
 
----
-
-Built with ❤️ for the [Your Hackathon Name] Hackathon
