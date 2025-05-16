@@ -24,7 +24,6 @@ export default function CampaignsPage() {
         setLoading(true);
         // Import directly to ensure it's available
         const { getUserCampaigns } = require('@/lib/storage');
-        // Get user-created campaigns from localStorage
         const userCampaigns = getUserCampaigns();
         console.log('User campaigns from localStorage:', userCampaigns);
         
@@ -36,8 +35,9 @@ export default function CampaignsPage() {
         
         // Combine user campaigns with mock campaigns
         const allCampaigns = [...userCampaigns, ...filteredMockCampaigns];
-        setCampaigns(allCampaigns);
         console.log('Total campaigns:', allCampaigns.length);
+        
+        setCampaigns(allCampaigns);
       } catch (error) {
         console.error("Error fetching campaigns:", error);
         setCampaigns(CAMPAIGNS_DATA); // Fallback to mock data

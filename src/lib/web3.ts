@@ -1,21 +1,30 @@
 import { CAMPAIGNS_DATA } from './constants';
-import { getPhantomWallet } from '@solana/wallet-adapter-wallets';
-import { BN } from '@project-serum/anchor';
 import { storeUserCampaign, updateCampaignFunding } from './storage';
-import type { Campaign, CampaignStatus, LaunchCampaignFormData, CampaignFundingStatus } from '@/types';
 import * as web3 from '@solana/web3.js';
 import * as anchor from '@coral-xyz/anchor';
 import { Program } from '@coral-xyz/anchor';
-import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { TOKEN_METADATA_PROGRAM_ID as METADATA_PROGRAM_ID } from '@metaplex-foundation/mpl-token-metadata';
-import * as token from '@solana/spl-token';
-import { Campaign, Supporter, FundingResult } from '../types';
+import { Campaign, Supporter, FundingResult, CampaignStatus } from '../types';
 
-// Import Metaplex UMI libraries for NFT metadata
+// Import necessary SPL token libraries
+import { 
+  ASSOCIATED_TOKEN_PROGRAM_ID, 
+  getAssociatedTokenAddress,
+  createInitializeMintInstruction,
+  createAssociatedTokenAccountInstruction
+} from '@solana/spl-token';
+
+// Define token program ID and constants
+const TOKEN_PROGRAM_ID = new web3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const METADATA_PROGRAM_ID = new web3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+// Constants for token account sizes
+const MINT_SIZE = 82; // Size of a mint account in bytes
+
+// Import Metaplex Token Metadata program
+import { mplTokenMetadata, fetchMasterEditionFromSeeds, findMetadataPda, findMasterEditionPda, findEditionMarkerPda, createNft, printSupply, printV1, TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { createNft, mplTokenMetadata, printSupply } from '@metaplex-foundation/mpl-token-metadata';
-import { generateSigner, percentAmount, publicKey } from '@metaplex-foundation/umi';
-import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters';
+import { walletAdapterIdentity, WalletAdapter } from '@metaplex-foundation/umi-signer-wallet-adapters';
+import { generateSigner, publicKey as umiPublicKey, percentAmount } from '@metaplex-foundation/umi';
 
 // Define Phantom wallet types to avoid TypeScript errors
 declare global {
@@ -31,21 +40,21 @@ declare global {
   }
 }
 
-// Constants needed for NFT creation
-// TOKEN_PROGRAM_ID is already imported from @solana/spl-token
-const TOKEN_METADATA_PROGRAM_ID = new web3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-const MINT_DECIMALS = 0; // NFTs have 0 decimals
 
-// For a hackathon project, we're keeping the NFT creation simple
-// The creator will remain the mint authority
-
-// Solana cluster URL for devnet
+// Solana cluster URL for devnet - always using Helius RPC
 export const getSolanaClusterUrl = () => {
-  return 'https://api.devnet.solana.com';
+  // Next.js client-side public environment variable (browser)
+  if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_HELIUS_DEVNET_URL) {
+    return process.env.NEXT_PUBLIC_HELIUS_DEVNET_URL;
+  }
+  // Server-side environment variable (Node.js)
+  if (typeof process !== 'undefined' && process.env.HELIUS_DEVNET_URL) {
+    return process.env.HELIUS_DEVNET_URL;
+  }
+  
+  // No fallback to public endpoint - we want to fail fast if Helius RPC is not configured
+  throw new Error('Helius RPC URL not configured in environment variables. Please check your .env file.');
 };
-
-// The escrow program ID is used in other parts of the code
-const ESCROW_PROGRAM_ID = new web3.PublicKey('DtHjEyhSHbm94vqfSBWgKxLn64GB5PkEzg3QrLJcQzQh');
 
 // Create a proper NFT with metadata using Metaplex UMI
 const createMetaplexNft = async (
@@ -184,7 +193,6 @@ declare global {
   }
 }
 
-
 interface WalletConnection {
   address: string;
 }
@@ -269,17 +277,40 @@ export const fundCampaign = async (
     );
     
     // Call the fund_campaign instruction
-    const txSignature = await program.methods
-      .fundCampaign(lamportsAmount)
-      .accounts({
-        campaign: campaignPubkey,
-        supporter: supporterPubkey,
-        supporterFunding: supporterFundingPDA,
-        systemProgram: web3.SystemProgram.programId,
-      })
-      .rpc();
+    let txSignature;
+    let transactionAlreadyProcessed = false;
+    try {
+      txSignature = await program.methods
+        .fundCampaign(lamportsAmount)
+        .accounts({
+          campaign: campaignPubkey,
+          supporter: supporterPubkey,
+          supporterFunding: supporterFundingPDA,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .rpc();
+      
+      console.log(`Campaign funded successfully! Signature: ${txSignature}`);
+    } catch (error: any) {
+      // Check if the error is due to the transaction already being processed
+      if (error.message && error.message.includes('This transaction has already been processed')) {
+        console.log('Transaction was already processed, treating as success');
+        transactionAlreadyProcessed = true;
+        // Extract signature from the error message if possible
+        const match = error.message.match(/Signature: ([A-Za-z0-9]+)/);
+        txSignature = match ? match[1] : 'TRANSACTION_ALREADY_PROCESSED';
+        console.log(`Using existing transaction signature: ${txSignature}`);
+      } else {
+        // This is a different error, rethrow it
+        console.error("Funding error:", error);
+        throw new Error(`Failed to fund campaign: ${error.message}`);
+      }
+    }
     
-    console.log(`Campaign funded successfully! Signature: ${txSignature}`);
+    // Add a short delay if transaction was already processed to ensure chain consistency
+    if (transactionAlreadyProcessed) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
     
     // Fetch updated campaign data
     let campaignData;
@@ -291,50 +322,10 @@ export const fundCampaign = async (
     }
     const isFundedNow = campaignData.isFunded;
     
-    // Check if the campaign just became fully funded with this contribution
-    let editionMintResult = null;
-    
+    // Check if the campaign funding state changed
     if (isFundedNow && !wasAlreadyFunded) {
       // Campaign just became fully funded with this contribution
-      console.log("Campaign just became fully funded! Edition NFTs will be minted automatically in order of funding.");
-      
-      // In this model, the NFTs will be minted in order of funding when the campaign becomes fully funded
-      // The smart contract handles the edition numbering based on the order of funding
-      console.log("The smart contract will assign edition numbers based on funding order.");
-      console.log("First supporter gets edition #1, second gets #2, and so on.");
-      
-      try {
-        editionMintResult = await mintEditionNft(
-          campaignId, 
-          supporterPubkey.toString(),
-          0 // The edition number will be assigned by the contract
-        );
-        
-        console.log("Edition NFT minted automatically!", editionMintResult);
-      } catch (mintError) {
-        // Log the error but don't fail the funding transaction
-        console.error("Error auto-minting edition NFT:", mintError);
-      }
-    } else if (isFundedNow && wasAlreadyFunded) {
-      // Campaign was already funded, so we need to check if this supporter already has an edition NFT
-      try {
-        // Fetch supporter funding data
-        const supporterFundingData = await program.account.supporterFunding.fetch(supporterFundingPDA);
-        
-        // If they don't have an NFT yet, mint one for them
-        if (!supporterFundingData.nftMinted) {
-          editionMintResult = await mintEditionNft(
-            campaignId,
-            supporterPubkey.toString(),
-            0 // The edition number will be assigned by the contract
-          );
-          console.log("Edition NFT minted for additional supporter!", editionMintResult);
-        } else {
-          console.log("Supporter already has an edition NFT for this campaign.");
-        }
-      } catch (error) {
-        console.error("Error checking supporter funding data:", error);
-      }
+      console.log("Campaign just became fully funded! Supporters can now claim their NFT rewards.");
     }
     
     // Update campaign in local storage with new funding amount
@@ -354,10 +345,9 @@ export const fundCampaign = async (
       editionInfo: isFundedNow ? {
         maxEditions: campaignData.maxEditions.toNumber(),
         editionsMinted: campaignData.editionsMinted.toNumber(),
-        automaticMinting: true,
-        message: "Edition NFTs are automatically minted to supporters in order of funding."
-      } : null,
-      editionMintResult: editionMintResult // Include edition mint result if available
+        automaticMinting: false,
+        message: "Edition NFTs are available for supporters to claim after the campaign is fully funded."
+      } : null
     };
   } catch (error: any) {
     console.error("Error funding campaign:", error);
@@ -378,6 +368,15 @@ export const getCampaigns = async (): Promise<Campaign[]> => {
   try {
     // Get program instance
     const program = await getGkEscrowProgram();
+    console.log('Getting campaigns from program ID:', program.programId.toString());
+    
+    try {
+      // Get all account types from program
+      const accountTypes = Object.keys(program.account);
+      console.log('Available account types:', accountTypes);
+    } catch (err) {
+      console.error('Error inspecting program accounts:', err);
+    }
     
     // Fetch all campaign accounts - specify "any" type to handle dynamic account structure
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -472,50 +471,12 @@ const calculateRemainingDays = (endDateStr?: string): number => {
 
 // Constants for Solana connection and program ID
 const SOLANA_NETWORK = 'devnet';
-// Use the program ID from the deployed contract IDL
-const GK_ESCROW_PROGRAM_ID = new web3.PublicKey(gkescrowIdl.address); // DtHjEyhSHbm94vqfSBWgKxLn64GB5PkEzg3QrLJcQzQh
-const MINIMUM_LAMPORTS_FOR_NFT = 10000000; // 0.01 SOL (adjust as needed)
 
 // Get Helius RPC URL from environment variables
 const getHeliusRpcUrl = () => {
-  if (typeof process !== 'undefined' && process.env.HELIUS_DEVNET_URL) {
-    return process.env.HELIUS_DEVNET_URL;
-  }
-  // Fallback for client-side if not available through Next.js
-  if (typeof window !== 'undefined' && (window as any).__env?.HELIUS_DEVNET_URL) {
-    return (window as any).__env.HELIUS_DEVNET_URL;
-  }
-  // Default fallback
-  return 'https://devnet.helius-rpc.com/?api-key=39703e7b-a2b9-4416-a329-882b8474ce2d';
+  // Using the same function for consistency
+  return getSolanaClusterUrl();
 }
-
-// IDL for the gkescrow program
-const gkEscrowIdl = {
-  // This is a simplified version of the IDL for illustration
-  // In production, import the actual IDL from a file or fetch it from chain
-  version: '0.1.0',
-  name: 'gk_escrow',
-  instructions: [
-    {
-      name: 'initializeCampaign',
-      accounts: [
-        { name: 'campaign', isMut: true, isSigner: false },
-        { name: 'creator', isMut: true, isSigner: true },
-        { name: 'nftMint', isMut: false, isSigner: false },
-        { name: 'systemProgram', isMut: false, isSigner: false },
-      ],
-      args: [
-        { name: 'projectName', type: 'string' },
-        { name: 'description', type: 'string' },
-        { name: 'fundingGoalLamports', type: 'u64' },
-        { name: 'nftName', type: 'string' },
-        { name: 'nftSymbol', type: 'string' },
-        { name: 'nftUri', type: 'string' },
-      ],
-    },
-  ],
-  // Add other necessary IDL fields
-};
 
 // Setup Solana connection with Helius RPC URL
 const getSolanaConnection = () => {
@@ -570,6 +531,46 @@ const getGkEscrowProgram = () => {
   return new Program(gkescrowIdl, provider);
 };
 
+// Function to derive Metadata account PDA
+async function getMetadataPDA(mint: web3.PublicKey): Promise<web3.PublicKey> {
+return (await web3.PublicKey.findProgramAddress(
+  [
+    Buffer.from('metadata'),
+    METADATA_PROGRAM_ID.toBuffer(),
+    mint.toBuffer(),
+  ],
+  METADATA_PROGRAM_ID
+))[0];
+}
+
+// Function to derive Master Edition PDA
+async function getMasterEditionPDA(mint: web3.PublicKey): Promise<web3.PublicKey> {
+return (await web3.PublicKey.findProgramAddress(
+  [
+    Buffer.from('metadata'),
+    METADATA_PROGRAM_ID.toBuffer(),
+    mint.toBuffer(),
+    Buffer.from('edition'),
+  ],
+  METADATA_PROGRAM_ID
+))[0];
+}
+
+// Function to derive Edition Marker PDA
+async function getEditionMarkerPDA(mint: web3.PublicKey, edition: number): Promise<web3.PublicKey> {
+const editionNumber = Math.floor(edition / 248);
+return (await web3.PublicKey.findProgramAddress(
+  [
+    Buffer.from('metadata'),
+    METADATA_PROGRAM_ID.toBuffer(),
+    mint.toBuffer(),
+    Buffer.from('edition'),
+    Buffer.from(editionNumber.toString()),
+  ],
+  METADATA_PROGRAM_ID
+))[0];
+}
+
 // Function to derive campaign PDA
 const deriveCampaignPDA = async (creator: web3.PublicKey, projectName: string) => {
   // Program ID is now extracted from the IDL
@@ -585,162 +586,7 @@ const deriveCampaignPDA = async (creator: web3.PublicKey, projectName: string) =
   )[0];
 };
 
-// Function to derive metadata PDA for a mint
-const deriveMetadataPDA = (mint: web3.PublicKey): web3.PublicKey => {
-  return web3.PublicKey.findProgramAddressSync(
-    [
-      Buffer.from('metadata'),
-      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(),
-    ],
-    TOKEN_METADATA_PROGRAM_ID
-  )[0];
-};
-
-// Function to create and initialize an NFT mint
-const createNftMint = async (
-  connection: web3.Connection,
-  payer: web3.PublicKey,
-  mintAuthority: web3.PublicKey
-): Promise<web3.Keypair> => {
-  console.log("Creating NFT Mint...");
-  
-  // Create a new keypair for the mint account
-  const mintKeypair = web3.Keypair.generate();
-  
-  try {
-    // Get the latest blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
-    
-    // Create a transaction to create a token mint
-    const lamports = await token.getMinimumBalanceForRentExemptMint(connection);
-    
-    // Create mint account instruction
-    const createAccountInstruction = web3.SystemProgram.createAccount({
-      fromPubkey: payer,
-      newAccountPubkey: mintKeypair.publicKey,
-      space: token.MINT_SIZE,
-      lamports,
-      programId: TOKEN_PROGRAM_ID,
-    });
-    
-    // Initialize mint instruction
-    const initMintInstruction = token.createInitializeMintInstruction(
-      mintKeypair.publicKey,
-      MINT_DECIMALS,
-      mintAuthority,
-      mintAuthority,
-      TOKEN_PROGRAM_ID
-    );
-    
-    // Combine instructions into a transaction
-    const transaction = new web3.Transaction().add(
-      createAccountInstruction,
-      initMintInstruction
-    );
-    
-    // Set recent blockhash and fee payer
-    transaction.feePayer = payer;
-    transaction.recentBlockhash = blockhash;
-    
-    // Get the wallet provider
-    const provider = window.phantom?.solana;
-    if (!provider) {
-      throw new Error('Wallet provider not found');
-    }
-    
-    // Sign the transaction with the mint keypair
-    transaction.partialSign(mintKeypair);
-    
-    // Sign and send the transaction
-    const signedTransaction = await provider.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-    
-    // Wait for confirmation
-    await connection.confirmTransaction(signature);
-    console.log("NFT Mint created:", mintKeypair.publicKey.toString());
-    
-    return mintKeypair;
-  } catch (error) {
-    console.error("Error creating NFT mint:", error);
-    throw error;
-  }
-};
-
-// Function to create metadata for an NFT
-const createNftMetadata = async (
-  connection: web3.Connection,
-  payer: web3.PublicKey,
-  mint: web3.PublicKey,
-  name: string,
-  symbol: string,
-  uri: string
-): Promise<string> => {
-  console.log("Creating NFT Metadata...");
-  
-  try {
-    // Set up the provider to get signing function
-    const provider = window.phantom?.solana;
-    if (!provider) {
-      throw new Error('Wallet provider not found');
-    }
-    
-    // Derive the metadata account address
-    const metadataAddress = deriveMetadataPDA(mint);
-    
-    // Create metadata for the NFT
-    const transaction = new web3.Transaction();
-    
-    // Create a buffer for the metadata account data
-    const metadataV1 = {
-      name,
-      symbol,
-      uri,
-      sellerFeeBasisPoints: 0, // No royalties (0%)
-      creators: null,
-      collection: null,
-      uses: null,
-    };
-    
-    // Simplified version of Metaplex's create metadata instruction
-    const createMetadataIx = new web3.TransactionInstruction({
-      keys: [
-        { pubkey: metadataAddress, isSigner: false, isWritable: true },
-        { pubkey: mint, isSigner: false, isWritable: false },
-        { pubkey: payer, isSigner: true, isWritable: false },
-        { pubkey: payer, isSigner: true, isWritable: false },
-        { pubkey: payer, isSigner: true, isWritable: false },
-        { pubkey: web3.SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: web3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
-      ],
-      programId: TOKEN_METADATA_PROGRAM_ID,
-      data: Buffer.from([
-        0, // Create metadata instruction
-        ...Buffer.from(JSON.stringify(metadataV1)),
-      ]),
-    });
-    
-    transaction.add(createMetadataIx);
-    
-    // Set recent blockhash and fee payer
-    const { blockhash } = await connection.getLatestBlockhash();
-    transaction.feePayer = payer;
-    transaction.recentBlockhash = blockhash;
-    
-    // Sign and send the transaction
-    const signedTransaction = await provider.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-    
-    // Wait for confirmation
-    await connection.confirmTransaction(signature);
-    console.log("NFT Metadata created at:", metadataAddress.toString());
-    
-    return signature;
-  } catch (error) {
-    console.error("Error creating NFT metadata:", error);
-    throw error;
-  }
-};
+// Modern NFT creation is now handled by createMetaplexNft using the Metaplex UMI SDK
 
 export const launchNewCampaign = async (formData: {
   projectName: string;
@@ -807,6 +653,15 @@ export const launchNewCampaign = async (formData: {
     // 4. Send transaction to blockchain
     console.log("Sending transaction to blockchain...");
     try {
+      // Use a more reliable approach to get transaction signature
+      // First set up options for proper confirmation
+      const options = {
+        skipPreflight: false,
+        commitment: 'confirmed' as web3.Commitment,
+        preflightCommitment: 'confirmed' as web3.Commitment,
+      };
+
+      // Get the transaction and add confirmation options
       const txSignature = await program.methods.initializeCampaign(
         formData.projectName,
         formData.description,
@@ -821,10 +676,47 @@ export const launchNewCampaign = async (formData: {
           nftMint: new web3.PublicKey(mintAddress),
           systemProgram: web3.SystemProgram.programId,
         })
-        .rpc();
+        .rpc(options);
+        
+      // Wait for transaction confirmation to ensure we have a valid signature
+      await connection.confirmTransaction({
+        signature: txSignature,
+        blockhash: blockhash,
+        lastValidBlockHeight: lastValidBlockHeight
+      }, 'confirmed');
       
       console.log("Campaign created successfully!");
       console.log("Transaction signature:", txSignature);
+      
+      // Step 3: Now transfer the NFT to escrow
+      console.log("Now transferring NFT to escrow...");
+      
+      try {
+        const escrowResult = await transferNftToEscrow(
+          campaignPDA.toString(),
+          nftMintPublicKey.toString()
+        );
+        
+        if (escrowResult.success) {
+          console.log("NFT successfully transferred to escrow!", escrowResult.signature);
+        } else {
+          console.error("Failed to transfer NFT to escrow:", escrowResult.message);
+          // We'll still return success for the campaign creation, but with a warning
+          return {
+            campaignId: campaignPDA.toString(),
+            message: "Campaign created successfully, but NFT escrow transfer failed. You'll need to transfer the NFT to escrow manually.",
+            transactionId: txSignature
+          };
+        }
+      } catch (escrowError: any) {
+        console.error("Error transferring NFT to escrow:", escrowError);
+        // Return success for campaign creation but with warning about escrow transfer
+        return {
+          campaignId: campaignPDA.toString(),
+          message: "Campaign created successfully, but NFT escrow transfer failed: " + escrowError.message,
+          transactionId: txSignature
+        };
+      }
       
       // Use the storage utility to save campaign data
       
@@ -835,7 +727,7 @@ export const launchNewCampaign = async (formData: {
         description: formData.description,
         creator: {
           id: creatorPubkey.toString(),
-          name: "You", // Placeholder name for the creator (yourself)
+          name: "Creator", // Placeholder name for the creator (yourself)
           walletAddress: creatorPubkey.toString()
         },
         fundingGoalSOL: formData.fundingGoalSOL,
@@ -855,18 +747,18 @@ export const launchNewCampaign = async (formData: {
         }
       };
       
-      // Store in localStorage for immediate visibility in UI
+      
       storeUserCampaign(campaignData);
 
-      // Return the campaign data with transaction signature
+      // Return campaign ID and transaction signature with message about escrow transfer
       return {
         campaignId: campaignPDA.toString(),
-        message: `Campaign '${formData.projectName}' created successfully on Solana ${SOLANA_NETWORK}!\nTransaction: ${txSignature}\nCampaign ID: ${campaignPDA.toString()}\nNFT Mint: ${mintAddress}`,
+        message: "Campaign created successfully and NFT transferred to escrow!",
         transactionId: txSignature
       };
-    } catch (error: any) {
+    } catch (txError) {
       // Check if the error is because the transaction was already processed
-      if (error.message?.includes('Transaction was already processed')) {
+      if (txError.message?.includes('Transaction was already processed')) {
         // This could mean the transaction was successful but we got a duplicate response
         // Let's try to extract the signature from the error message if possible
         let extractedSignature = '';
@@ -900,18 +792,7 @@ export const launchNewCampaign = async (formData: {
       console.error("Error creating campaign:", error);
       throw new Error(`Failed to create campaign: ${error.message}`);
     }
-    // This code is unreachable because of the try/catch block above
-    // Keeping it commented out for reference
-    /*
-    console.log(`NFT created with mint address: ${mintAddress}`);
-    console.log(`You can view it at: https://explorer.solana.com/address/${mintAddress}?cluster=devnet`);
-    
-    return { 
-      campaignId: campaignPDA.toString(),
-      message: `Campaign '${formData.projectName}' created successfully on Solana ${SOLANA_NETWORK}!\nTransaction: ${txSignature}\nCampaign ID: ${campaignPDA.toString()}\nNFT Mint: ${mintAddress}`,
-      transactionId: txSignature
-    };
-    */
+
   } catch (error: any) {
     console.error("Error launching campaign:", error);
     
@@ -984,16 +865,15 @@ export const claimRefund = async (
     // Get supporter's wallet address
     const supporterPubkey = provider.wallet.publicKey;
     
-    // Find the campaign PDA
+    // Find the campaign account by its public key
     const campaignPubkey = new web3.PublicKey(campaignId);
     
-    // Derive the supporter funding PDA
+    // Convert provider publicKey to web3.PublicKey
+    const walletPubkey = new web3.PublicKey(provider.publicKey.toString());
+        
+    // Calculate the PDA for the supporter's funding account
     const [supporterFundingPDA] = web3.PublicKey.findProgramAddressSync(
-      [
-        Buffer.from('supporter-funding'),
-        campaignPubkey.toBuffer(),
-        supporterPubkey.toBuffer(),
-      ],
+      [Buffer.from('supporter-funding'), campaignPubkey.toBuffer(), walletPubkey.toBuffer()],
       program.programId
     );
     
@@ -1084,63 +964,242 @@ export const withdrawCampaignFunds = async (
   }
 };
 
-// Function to check current connection status without prompting user (if already trusted)
-// Mint an edition NFT from a Master Edition NFT for a campaign supporter
-export const mintEditionNft = async (
-  campaignId: string,
-  supporterId: string,
-  editionNumber: number = 0
-): Promise<{ success: boolean; editionMint: string; signature: string }> => {
-  console.log(`Minting edition NFT #${editionNumber} for campaign ${campaignId} to supporter ${supporterId}`);
-  
+/**
+ * Claim an NFT from escrow using the new smart contract functionality
+ * @param campaignId Campaign ID to claim from
+ * @returns Object containing claim status and transaction signature
+ */
+export const claimNftFromEscrow = async (
+  campaignId: string
+): Promise<{
+  success: boolean;
+  message: string;
+  signature?: string;
+  editionMint?: string;
+  editionNumber?: number;
+}> => {
   try {
-    // Get Phantom wallet
+    // Get wallet
     const provider = window.phantom?.solana;
     if (!provider?.publicKey) {
       throw new Error('Wallet not connected');
     }
     
-    // Create a UMI instance
-    const umi = createUmi(getSolanaClusterUrl())
-      .use(mplTokenMetadata());
+    // Convert to proper PublicKey object
+    const supporterPubkey = new web3.PublicKey(provider.publicKey.toString());
     
-    // Create a wallet adapter for Phantom that works with UMI
-    const walletPublicKeyString = provider.publicKey.toString();
-    
-    // Create a custom publicKey object that has the toBase58 method
-    const customPublicKey = {
-      bytes: new Uint8Array(32), // This is just a placeholder
-      toBase58: () => walletPublicKeyString,
-      toString: () => walletPublicKeyString,
-    };
-    
-    // Create a fully UMI-compatible wallet adapter
-    const phantomWalletAdapter = {
-      publicKey: customPublicKey,
-      signMessage: async (message: Uint8Array) => {
-        console.log("Signing message...");
-        const { signature } = await provider.signMessage(message, 'utf8');
-        return signature;
-      },
-      signTransaction: async (transaction: any) => {
-        console.log("Signing transaction...");
-        return await provider.signTransaction(transaction);
-      },
-      signAllTransactions: async (transactions: any[]) => {
-        console.log("Signing all transactions...");
-        return await provider.signAllTransactions(transactions);
-      },
-    };
-    
-    // Connect the wallet adapter to UMI
-    umi.use(walletAdapterIdentity(phantomWalletAdapter));
-    
-    // Get the program instance
+    // Initialize connection and program
+    const connection = getSolanaConnection();
     const program = getGkEscrowProgram();
     
-    // Convert string IDs to PublicKeys
+    // Convert string ID to PublicKey
     const campaignPubkey = new web3.PublicKey(campaignId);
-    const supporterPubkey = new web3.PublicKey(supporterId);
+    
+    // Get campaign data
+    const campaignData = await program.account.campaign.fetch(campaignPubkey);
+    const nftMint = campaignData.nftMint;
+    
+    // Check if NFT is in escrow
+    if (!campaignData.nftInEscrow) {
+      return {
+        success: false,
+        message: "The NFT for this campaign has not been transferred to escrow yet."
+      };
+    }
+    
+    // Find PDAs and accounts
+    const [supporterFundingPDA] = await web3.PublicKey.findProgramAddress(
+      [
+        Buffer.from('supporter-funding'),
+        campaignPubkey.toBuffer(),
+        supporterPubkey.toBuffer()
+      ],
+      program.programId
+    );
+    
+    // Check if NFT was already claimed by this supporter
+    try {
+      const supporterFundingData = await program.account.supporterFunding.fetch(supporterFundingPDA);
+      
+      if (supporterFundingData.nftMinted) {
+        console.log('NFT already claimed by this supporter');
+        return {
+          success: true,
+          editionMint: supporterFundingData.editionMint?.toString(),
+          editionNumber: supporterFundingData.editionNumber?.toNumber() || 1,
+          message: 'You have already claimed your NFT reward for this campaign.'
+        };
+      }
+    } catch (err) {
+      console.log('Supporter funding data not found or error:', err);
+      // Continue with claiming process if this is just a "not found" error
+    }
+    
+    // Find escrow PDA and accounts
+    const [escrowAuthority] = await web3.PublicKey.findProgramAddress(
+      [Buffer.from('escrow'), campaignPubkey.toBuffer()],
+      program.programId
+    );
+    
+    const escrowTokenAccount = await getAssociatedTokenAddress(
+      nftMint,
+      escrowAuthority,
+      true // allowOwnerOffCurve: true for PDA
+    );
+    
+    const supporterTokenAccount = await getAssociatedTokenAddress(
+      nftMint,
+      supporterPubkey
+    );
+    
+    console.log('Claiming NFT from escrow...');
+    
+    try {
+      // Call the claim_nft_from_escrow instruction
+      const claimTx = await program.methods
+        .claimNftFromEscrow()
+        .accounts({
+          campaign: campaignPubkey,
+          supporterFunding: supporterFundingPDA,
+          supporter: supporterPubkey,
+          nftMint: nftMint,
+          escrowAuthority: escrowAuthority,
+          escrowTokenAccount: escrowTokenAccount,
+          supporterTokenAccount: supporterTokenAccount,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: web3.SystemProgram.programId,
+          rent: web3.SYSVAR_RENT_PUBKEY
+        })
+        .rpc();
+      
+      console.log('NFT claimed successfully! Transaction signature:', claimTx);
+      
+      // Return success information
+      return {
+        success: true,
+        editionMint: nftMint.toString(),
+        signature: claimTx,
+        message: 'NFT claimed successfully! Check your wallet for the NFT.'
+      };
+    } catch (txError: any) {
+      console.error('Error claiming NFT from escrow:', txError);
+      
+      // Check if the error is because the NFT was already claimed
+      if (txError.message?.includes('NftAlreadyMinted') || 
+          txError.message?.includes('already minted') ||
+          txError.message?.includes('already claimed') ||
+          txError.message?.includes('0x177c')) {
+        return {
+          success: true,
+          editionMint: nftMint.toString(),
+          signature: 'already-claimed',
+          message: 'You have already claimed your NFT reward for this campaign.'
+        };
+      }
+      
+      throw txError;
+    }
+  } catch (error: any) {
+    console.error('Error claiming NFT from escrow:', error);
+    return {
+      success: false,
+      message: `Failed to claim NFT: ${error.message}`
+    };
+  }
+};
+
+// Kept for backward compatibility, redirects to the new function
+export const mintEditionNft = async (
+  campaignId: string,
+  supporterId: string,
+  editionNumber: number = 0
+): Promise<{ success: boolean; editionMint: string; signature: string; message?: string }> => {
+  console.log('Using new claimNftFromEscrow function instead of mintEditionNft');
+  const result = await claimNftFromEscrow(campaignId);
+  
+  return {
+    success: result.success,
+    editionMint: result.editionMint || '',
+    signature: result.signature || 'no-signature',
+    message: result.message
+  };
+};
+
+/**
+ * Check if a supporter is eligible to claim an NFT for a campaign
+ * @param campaignId Campaign ID to check
+ * @returns Object containing eligibility status and related information
+ */
+export const checkNftClaimEligibility = async (campaignId: string): Promise<{
+  isEligible: boolean;
+  message: string;
+  isCampaignFunded: boolean;
+  hasContributed: boolean;
+  alreadyClaimed: boolean;
+  campaignData?: any;
+  supporterFundingData?: any;
+}> => {
+  try {
+    const wallet = window.phantom?.solana;
+    if (!wallet || !wallet.publicKey) {
+      return {
+        isEligible: false,
+        message: "Wallet not connected. Please connect your wallet to check eligibility.",
+        isCampaignFunded: false,
+        hasContributed: false,
+        alreadyClaimed: false
+      };
+    }
+
+    // Get program instance
+    const program = await getGkEscrowProgram();
+    
+    // Convert campaign ID to PublicKey
+    const campaignPubkey = new web3.PublicKey(campaignId);
+    const supporterPubkey = wallet.publicKey;
+    
+    // Fetch campaign data
+    let campaignData;
+    try {
+      campaignData = await program.account.campaign.fetch(campaignPubkey);
+    } catch (error) {
+      console.error("Error fetching campaign data:", error);
+      return {
+        isEligible: false,
+        message: "Error fetching campaign data. Campaign may not exist.",
+        isCampaignFunded: false,
+        hasContributed: false,
+        alreadyClaimed: false
+      };
+    }
+    
+    // Check if campaign is funded
+    const isCampaignFunded = campaignData.isFunded;
+    if (!isCampaignFunded) {
+      return {
+        isEligible: false,
+        message: "This campaign is not fully funded yet. Once fully funded, you can claim your NFT.",
+        isCampaignFunded: false,
+        hasContributed: true,
+        alreadyClaimed: false,
+        campaignData,
+        supporterFundingData: null
+      };
+    }
+    
+    // Check if NFT is in escrow
+    if (!campaignData.nftInEscrow) {
+      return {
+        isEligible: false,
+        message: "The campaign creator needs to transfer the NFT to escrow before it can be claimed.",
+        isCampaignFunded: true,
+        hasContributed: true,
+        alreadyClaimed: false,
+        campaignData,
+        supporterFundingData: null
+      };
+    }
     
     // Derive the supporter funding PDA
     const [supporterFundingPDA] = await web3.PublicKey.findProgramAddress(
@@ -1152,47 +1211,213 @@ export const mintEditionNft = async (
       program.programId
     );
     
-    // Get campaign data to retrieve master edition mint
-    const campaignData = await program.account.campaign.fetch(campaignPubkey);
-    const masterEditionMint = new web3.PublicKey(campaignData.nftMint);
+    // Fetch supporter funding data
+    let supporterFundingData;
+    let hasContributed = false;
+    try {
+      supporterFundingData = await program.account.supporterFunding.fetch(supporterFundingPDA);
+      hasContributed = true;
+    } catch (error) {
+      console.log("Error fetching supporter funding data. User may not have contributed:", error);
+      return {
+        isEligible: false,
+        message: "You have not contributed to this campaign.",
+        isCampaignFunded: true,
+        hasContributed: false,
+        alreadyClaimed: false,
+        campaignData
+      };
+    }
     
-    // Generate a new mint keypair for the edition NFT
-    const editionMintKeypair = web3.Keypair.generate();
-    console.log(`Generated edition mint address: ${editionMintKeypair.publicKey.toString()}`);
+    // Check if NFT has already been claimed
+    const alreadyClaimed = supporterFundingData.nftMinted;
+    if (alreadyClaimed) {
+      return {
+        isEligible: false,
+        message: "You have already claimed your NFT for this campaign.",
+        isCampaignFunded: true,
+        hasContributed: true,
+        alreadyClaimed: true,
+        campaignData,
+        supporterFundingData
+      };
+    }
     
-    // Initialize the edition mint account
-    const connection = new web3.Connection(getSolanaClusterUrl());
-    const creatorPubkey = new web3.PublicKey(provider.publicKey.toString());
+    // If we get here, the user is eligible to claim
+    return {
+      isEligible: true,
+      message: "You are eligible to claim your NFT reward for supporting this campaign!",
+      isCampaignFunded: true,
+      hasContributed: true,
+      alreadyClaimed: false,
+      campaignData,
+      supporterFundingData
+    };
+  } catch (error: any) {
+    console.error("Error checking NFT claim eligibility:", error);
+    return {
+      isEligible: false,
+      message: `Error checking eligibility: ${error.message}`,
+      isCampaignFunded: false,
+      hasContributed: false,
+      alreadyClaimed: false
+    };
+  }
+};
+
+/**
+ * Transfer an NFT to the escrow account for a campaign
+ * @param campaignId Campaign ID to transfer the NFT to
+ * @param nftMint NFT mint address to transfer
+ * @returns Object containing transfer status and transaction signature
+ */
+export const transferNftToEscrow = async (
+  campaignId: string, 
+  nftMint: string
+): Promise<{
+  success: boolean;
+  message: string;
+  signature?: string;
+}> => {
+  try {
+    // Get wallet
+    const provider = window.phantom?.solana;
+    if (!provider?.publicKey) {
+      throw new Error('Wallet not connected');
+    }
     
-    // Call our program to mint the edition NFT
-    // This will handle creating the mint, setting up token accounts, and printing the edition
-    const txSignature = await program.methods
-      .mintEditionNft(editionNumber)
+    // Initialize connection and program
+    const connection = getSolanaConnection();
+    const program = getGkEscrowProgram();
+    
+    // Convert string IDs to PublicKeys
+    const campaignPubkey = new web3.PublicKey(campaignId);
+    const nftMintPubkey = new web3.PublicKey(nftMint);
+    
+    // Convert wallet public key string to PublicKey object
+    const walletPubkey = new web3.PublicKey(provider.publicKey.toString());
+    
+    // Find creator's token account for the NFT
+    const creatorTokenAccount = await getAssociatedTokenAddress(
+      nftMintPubkey,
+      walletPubkey
+    );
+    
+    // Find escrow PDA and token account
+    const [escrowAuthority] = await web3.PublicKey.findProgramAddress(
+      [Buffer.from('escrow'), campaignPubkey.toBuffer()],
+      program.programId
+    );
+    
+    const escrowTokenAccount = await getAssociatedTokenAddress(
+      nftMintPubkey,
+      escrowAuthority,
+      true // allowOwnerOffCurve: true for PDA
+    );
+    
+    // Call transfer_nft_to_escrow instruction
+    const transferTx = await program.methods
+      .transferNftToEscrow()
       .accounts({
         campaign: campaignPubkey,
-        supporter: supporterPubkey,
-        supporterFunding: supporterFundingPDA,
-        masterEditionMint: masterEditionMint,
-        editionMint: editionMintKeypair.publicKey,
-        payer: creatorPubkey,
-        systemProgram: web3.SystemProgram.programId,
+        creator: walletPubkey,
+        nftMint: nftMintPubkey,
+        creatorTokenAccount: creatorTokenAccount,
+        escrowAuthority: escrowAuthority,
+        escrowTokenAccount: escrowTokenAccount,
         tokenProgram: TOKEN_PROGRAM_ID,
-        tokenMetadataProgram: METADATA_PROGRAM_ID
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: web3.SystemProgram.programId,
+        rent: web3.SYSVAR_RENT_PUBKEY
       })
-      .signers([editionMintKeypair])
       .rpc();
-    
-    console.log(`Edition NFT minted successfully! Signature: ${txSignature}`);
-    console.log(`Edition Mint Address: ${editionMintKeypair.publicKey.toString()}`);
     
     return {
       success: true,
-      editionMint: editionMintKeypair.publicKey.toString(),
-      signature: txSignature
+      message: 'NFT successfully transferred to escrow!',
+      signature: transferTx
     };
   } catch (error: any) {
-    console.error("Error minting edition NFT:", error);
-    throw new Error(`Failed to mint edition NFT: ${error.message}`);
+    console.error('Error transferring NFT to escrow:', error);
+    return {
+      success: false,
+      message: `Failed to transfer NFT: ${error.message}`
+    };
+  }
+};
+
+/**
+ * Claim an NFT reward for supporting a campaign
+ * @param campaignId Campaign ID to claim from
+ * @returns Object containing claim status and NFT info
+ */
+export const claimNftReward = async (campaignId: string): Promise<{
+  success: boolean;
+  message: string;
+  signature?: string;
+  editionMint?: string;
+  editionNumber?: number;
+}> => {
+  try {
+    // First check eligibility
+    const eligibility = await checkNftClaimEligibility(campaignId);
+    
+    if (!eligibility.isEligible) {
+      return {
+        success: false,
+        message: eligibility.message
+      };
+    }
+    
+    // Get wallet connection
+    const wallet = window.phantom?.solana;
+    if (!wallet || !wallet.publicKey) {
+      throw new Error("Wallet not connected. Please connect your wallet and try again.");
+    }
+    
+    console.log(`Attempting to claim NFT for campaign ${campaignId} with wallet ${wallet.publicKey.toString()}`);
+    
+    try {
+      // Use our new claim_nft_from_escrow function
+      const claimResult = await claimNftFromEscrow(campaignId);
+      
+      if (claimResult.success) {
+        console.log('NFT claimed successfully!', claimResult);
+        return {
+          success: true,
+          message: claimResult.message || "NFT claimed successfully! Check your wallet for the NFT.",
+          signature: claimResult.signature,
+          editionMint: claimResult.editionMint,
+          editionNumber: claimResult.editionNumber
+        };
+      } else {
+        throw new Error(claimResult.message || "Unknown error during NFT claiming");
+      }
+    } catch (claimError: any) {
+      console.error("Error during NFT claiming:", claimError);
+      
+      // Check if the error is because the NFT was already claimed
+      if (claimError.message?.includes('NftAlreadyMinted') || 
+          claimError.message?.includes('already minted') ||
+          claimError.message?.includes('already claimed') ||
+          claimError.message?.includes('0x177c')) {
+        // Return success with a message about already claimed
+        return {
+          success: true,
+          message: "You've already claimed your NFT reward for this campaign.",
+          editionMint: eligibility.supporterFundingData?.editionMint?.toString(),
+          editionNumber: eligibility.supporterFundingData?.editionNumber?.toNumber() || 1
+        };
+      }
+      
+      throw claimError;
+    }
+  } catch (error: any) {
+    console.error("Error claiming NFT:", error);
+    return {
+      success: false,
+      message: `Failed to claim NFT: ${error.message || "An unexpected error occurred"}`
+    };
   }
 };
 
@@ -1214,4 +1439,175 @@ export const checkPhantomConnection = async (): Promise<WalletConnection | null>
     }
   }
   return null;
+};
+
+/**
+ * Initialize a campaign on-chain and transfer NFT to escrow
+ * @param campaignData Campaign initialization data
+ * @returns Object with success status, message, and campaign public key
+ */
+export const initializeCampaign = async (campaignData: {
+  projectName: string;
+  description: string;
+  fundingGoalSol: number;
+  endTimestamp: number;
+  nftMintAddress: string;
+  nftName: string;
+  nftSymbol: string;
+  nftUri: string;
+  maxEditions: number;
+}): Promise<{ 
+  success: boolean; 
+  message: string; 
+  campaignId: string; 
+  signature: string; 
+  steps?: { 
+    name: string; 
+    success: boolean; 
+    signature?: string; 
+  }[]; 
+}> => {
+  try {
+    console.log(`Initializing campaign: ${campaignData.projectName}`);
+    
+    // Get wallet connection
+    const provider = window.phantom?.solana;
+    if (!provider?.publicKey) {
+      throw new Error("Wallet not connected. Please connect your wallet and try again.");
+    }
+    
+    // Initialize connection and program
+    const connection = getSolanaConnection();
+    const program = getGkEscrowProgram();
+    
+    // Derive the campaign PDA
+    const creatorPubkey = new web3.PublicKey(provider.publicKey.toString());
+    const [campaignPDA] = await web3.PublicKey.findProgramAddress(
+      [
+        Buffer.from('campaign'), 
+        creatorPubkey.toBuffer(), 
+        Buffer.from(campaignData.projectName)
+      ],
+      program.programId
+    );
+    
+    // Convert funding goal from SOL to lamports
+    const fundingGoalLamports = new BN(campaignData.fundingGoalSol * web3.LAMPORTS_PER_SOL);
+    
+    // Convert nftMintAddress to PublicKey
+    const nftMintPubkey = new web3.PublicKey(campaignData.nftMintAddress);
+    
+    console.log(`Creating campaign with funding goal: ${campaignData.fundingGoalSol} SOL`);
+    console.log(`NFT mint address: ${nftMintPubkey.toString()}`);
+    
+    // Step 1: Track our steps
+    const steps = [];
+    
+    // Call instruction to initialize the campaign
+    try {
+      const createTx = await program.methods
+        .initializeCampaign(
+          campaignData.projectName,
+          campaignData.description,
+          fundingGoalLamports,
+          campaignData.nftName,
+          campaignData.nftSymbol,
+          campaignData.nftUri,
+          new BN(campaignData.maxEditions),
+          new BN(campaignData.endTimestamp)
+        )
+        .accounts({
+          campaign: campaignPDA,
+          creator: creatorPubkey,
+          nftMint: nftMintPubkey,
+          systemProgram: web3.SystemProgram.programId,
+        })
+        .rpc();
+      
+      console.log("Campaign created successfully!");
+      console.log(`Transaction signature: ${createTx}`);
+      
+      steps.push({
+        name: "Create Campaign",
+        success: true,
+        signature: createTx
+      });
+      
+      // Store campaign in local storage for the current user
+      storeUserCampaign(campaignPDA.toString());
+    } catch (createError: any) {
+      console.error("Error creating campaign:", createError);
+      steps.push({
+        name: "Create Campaign",
+        success: false
+      });
+      throw createError;
+    }
+    
+    // Step 2: Transfer NFT to escrow
+    try {
+      console.log("Transferring NFT to escrow...");
+      
+      const escrowResult = await transferNftToEscrow(
+        campaignPDA.toString(),
+        nftMintPubkey.toString()
+      );
+      
+      if (escrowResult.success) {
+        console.log("NFT transferred to escrow successfully!");
+        steps.push({
+          name: "Transfer NFT to Escrow",
+          success: true,
+          signature: escrowResult.signature
+        });
+      } else {
+        console.error("Failed to transfer NFT to escrow:", escrowResult.message);
+        steps.push({
+          name: "Transfer NFT to Escrow",
+          success: false
+        });
+        
+        // We'll still return success if the campaign was created, but with a warning
+        return {
+          success: true,
+          message: "Campaign created successfully, but NFT escrow transfer failed. You'll need to transfer the NFT to escrow manually.",
+          campaignId: campaignPDA.toString(),
+          signature: steps[0].signature || "",
+          steps
+        };
+      }
+    } catch (escrowError: any) {
+      console.error("Error transferring NFT to escrow:", escrowError);
+      steps.push({
+        name: "Transfer NFT to Escrow",
+        success: false
+      });
+      
+      // We'll still return success if the campaign was created
+      return {
+        success: true,
+        message: "Campaign created successfully, but NFT escrow transfer failed: " + escrowError.message,
+        campaignId: campaignPDA.toString(),
+        signature: steps[0].signature || "",
+        steps
+      };
+    }
+    
+    // Both steps completed successfully
+    return {
+      success: true,
+      message: "Campaign created and NFT transferred to escrow successfully!",
+      campaignId: campaignPDA.toString(),
+      signature: steps[0].signature || "",
+      steps
+    };
+  } catch (error: any) {
+    console.error("Error creating campaign:", error);
+    return {
+      success: false,
+      message: `Failed to create campaign: ${error.message}`,
+      campaignId: "",
+      signature: ""
+    };
+  }
 };

@@ -2,7 +2,7 @@ import type { Campaign, Creator } from '@/types';
 
 export const FALLBACK_SOL_TO_IDR_RATE = 800000; 
 export const CAMPAIGN_DURATION_MINUTES = 10; // Default campaign duration in minutes (matches smart contract)
-export const ESCROW_PROGRAM_ID = 'GKtPETiRdkiVbpFEq8r7HjQpsWQr6PV7YgwJwJGrdgPp'; // GK Escrow program ID
+export const ESCROW_PROGRAM_ID = '6saaps2jtMCng2XxkuBG3Cizvcsfy2LBm8AGicK2NamF'; // GK Escrow program ID
 
 export const CREATORS_DATA: Creator[] = [
   { id: "creator1", name: "Jumbo Studio", walletAddress: "JumboWallet...", avatarUrl: "https://picsum.photos/seed/jumbo_avatar/40/40" },

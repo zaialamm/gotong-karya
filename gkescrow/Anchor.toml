@@ -7,10 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-gkescrow = "DtHjEyhSHbm94vqfSBWgKxLn64GB5PkEzg3QrLJcQzQh"
+gkescrow = "6saaps2jtMCng2XxkuBG3Cizvcsfy2LBm8AGicK2NamF"
 
 [programs.localnet]
-gkescrow = "DtHjEyhSHbm94vqfSBWgKxLn64GB5PkEzg3QrLJcQzQh"
+gkescrow = "6saaps2jtMCng2XxkuBG3Cizvcsfy2LBm8AGicK2NamF"
 
 [registry]
 url = "https://api.apr.dev"

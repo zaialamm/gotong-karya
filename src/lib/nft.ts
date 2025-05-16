@@ -38,15 +38,6 @@ export const createNftMetadata = async (metadata: NFTMetadataArgs): Promise<stri
   return `https://example.com/${metadata.name.replace(/\s+/g, '-').toLowerCase()}.json`;
 };
 
-/**
- * Legacy function to maintain API compatibility
- * @param metadata - NFT metadata
- * @returns URI of the metadata
- */
-export const uploadToArweave = async (metadata: NFTMetadataArgs): Promise<string> => {
-  console.log("Using createNftMetadata instead of uploadToArweave");
-  return await createNftMetadata(metadata);
-};
 
 /**
  * Helper function to generate a simple deterministic ID
@@ -94,14 +85,3 @@ export const createNft = async (
   };
 };
 
-/**
- * Mock function to maintain API compatibility
- */
-export const transferNft = async (
-  wallet: any,
-  nftMint: string,
-  recipientAddress: string
-): Promise<string> => {
-  console.log('Mock NFT transfer:', { nftMint, recipientAddress });
-  return 'mock-transaction-signature';
-};

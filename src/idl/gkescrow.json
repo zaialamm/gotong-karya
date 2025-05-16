@@ -1,5 +1,5 @@
 {
-  "address": "DtHjEyhSHbm94vqfSBWgKxLn64GB5PkEzg3QrLJcQzQh",
+  "address": "6saaps2jtMCng2XxkuBG3Cizvcsfy2LBm8AGicK2NamF",
   "metadata": {
     "name": "gkescrow",
     "version": "0.1.0",
@@ -7,6 +7,204 @@
     "description": "Created with Anchor"
   },
   "instructions": [
+    {
+      "name": "claim_nft_from_escrow",
+      "discriminator": [
+        156,
+        251,
+        81,
+        112,
+        236,
+        92,
+        219,
+        189
+      ],
+      "accounts": [
+        {
+          "name": "campaign",
+          "writable": true
+        },
+        {
+          "name": "supporter_funding",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  117,
+                  112,
+                  112,
+                  111,
+                  114,
+                  116,
+                  101,
+                  114,
+                  45,
+                  102,
+                  117,
+                  110,
+                  100,
+                  105,
+                  110,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              },
+              {
+                "kind": "account",
+                "path": "supporter"
+              }
+            ]
+          }
+        },
+        {
+          "name": "supporter",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "nft_mint"
+        },
+        {
+          "name": "escrow_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true
+        },
+        {
+          "name": "supporter_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "supporter"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "nft_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
     {
       "name": "claim_refund",
       "discriminator": [
@@ -229,16 +427,176 @@
       ]
     },
     {
-      "name": "mint_edition_nft",
+      "name": "transfer_nft_to_escrow",
       "discriminator": [
-        45,
-        177,
-        0,
-        162,
-        149,
-        230,
-        134,
-        67
+        172,
+        77,
+        254,
+        26,
+        218,
+        126,
+        211,
+        102
+      ],
+      "accounts": [
+        {
+          "name": "campaign",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "nft_mint"
+        },
+        {
+          "name": "creator_token_account",
+          "writable": true
+        },
+        {
+          "name": "escrow_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "campaign"
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_token_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "escrow_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "nft_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_supporter_nft_mint",
+      "discriminator": [
+        214,
+        113,
+        91,
+        240,
+        97,
+        145,
+        112,
+        152
       ],
       "accounts": [
         {
@@ -285,11 +643,11 @@
           }
         },
         {
-          "name": "creator",
-          "signer": true
+          "name": "creator"
         },
         {
           "name": "authority",
+          "writable": true,
           "signer": true
         },
         {
@@ -308,22 +666,6 @@
           "writable": true
         },
         {
-          "name": "master_edition_metadata"
-        },
-        {
-          "name": "master_edition"
-        },
-        {
-          "name": "edition_metadata"
-        },
-        {
-          "name": "edition_marker"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -332,13 +674,20 @@
           "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
-          "name": "token_metadata_program"
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
-          "name": "rent"
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "edition_number",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "withdraw_funds",
@@ -503,48 +852,83 @@
     },
     {
       "code": 6006,
-      "name": "Unauthorized",
-      "msg": "Not authorized to perform this action"
+      "name": "NotEligibleForWithdrawal",
+      "msg": "Funds not yet eligible for withdrawal"
     },
     {
       "code": 6007,
-      "name": "AmountOverflow",
-      "msg": "Amount would cause overflow"
+      "name": "Unauthorized",
+      "msg": "Unauthorized: only the creator can withdraw funds"
     },
     {
       "code": 6008,
-      "name": "CountOverflow",
-      "msg": "Count would cause overflow"
-    },
-    {
-      "code": 6009,
-      "name": "InsufficientFunds",
-      "msg": "Insufficient funds for the operation"
-    },
-    {
-      "code": 6010,
       "name": "InvalidCampaign",
       "msg": "Invalid campaign"
     },
     {
+      "code": 6009,
+      "name": "ArithmeticError",
+      "msg": "Arithmetic error during calculation"
+    },
+    {
+      "code": 6010,
+      "name": "CampaignNotEnded",
+      "msg": "Campaign is not past end date"
+    },
+    {
       "code": 6011,
-      "name": "MaxEditionsReached",
-      "msg": "Maximum number of editions already minted"
+      "name": "CampaignIsFunded",
+      "msg": "Campaign is funded"
     },
     {
       "code": 6012,
-      "name": "NftAlreadyMinted",
-      "msg": "NFT has already been minted for this supporter"
+      "name": "NotAuthorizedToMintNft",
+      "msg": "Not authorized to mint edition NFT"
     },
     {
       "code": 6013,
-      "name": "NftMintingFailed",
-      "msg": "NFT minting operation failed"
+      "name": "NftAlreadyMinted",
+      "msg": "NFT already minted for this supporter"
     },
     {
       "code": 6014,
-      "name": "ArithmeticError",
-      "msg": "Arithmetic error"
+      "name": "MaxEditionsReached",
+      "msg": "Maximum number of edition NFTs reached"
+    },
+    {
+      "code": 6015,
+      "name": "NftAlreadyInEscrow",
+      "msg": "NFT already in escrow"
+    },
+    {
+      "code": 6016,
+      "name": "NftNotInEscrow",
+      "msg": "NFT not in escrow yet"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidNftMint",
+      "msg": "Invalid NFT mint address"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidTokenAccount",
+      "msg": "Invalid token account"
+    },
+    {
+      "code": 6019,
+      "name": "AmountOverflow",
+      "msg": "Amount would cause overflow"
+    },
+    {
+      "code": 6020,
+      "name": "CountOverflow",
+      "msg": "Count would cause overflow"
+    },
+    {
+      "code": 6021,
+      "name": "InsufficientFunds",
+      "msg": "Insufficient funds for the operation"
     }
   ],
   "types": [
@@ -608,6 +992,10 @@
           {
             "name": "nft_mint",
             "type": "pubkey"
+          },
+          {
+            "name": "nft_in_escrow",
+            "type": "bool"
           },
           {
             "name": "max_editions",

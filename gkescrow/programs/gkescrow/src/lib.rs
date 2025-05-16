@@ -2,10 +2,14 @@ use anchor_lang::prelude::*;
 use std::str::FromStr;
 
 // Import necessary SPL token libraries
-use anchor_spl::token::{self, Token, MintTo};
+use anchor_spl::token::{self, Token, MintTo, Mint, TokenAccount};
 use anchor_spl::associated_token::AssociatedToken;
 
-declare_id!("DtHjEyhSHbm94vqfSBWgKxLn64GB5PkEzg3QrLJcQzQh");
+// Define Metaplex Token Metadata program ID
+pub const METADATA_PROGRAM_ID: &str = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
+pub const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+declare_id!("6saaps2jtMCng2XxkuBG3Cizvcsfy2LBm8AGicK2NamF");
 
 // Platform fee percentage (2.5% = 25/1000)
 const PLATFORM_FEE_NUMERATOR: u64 = 25;
@@ -258,66 +262,206 @@ pub mod gkescrow {
         
         msg!("Treasury funds withdrawn successfully!");
         msg!("Admin: {}", admin.key());
-        msg!("Amount: {} lamports", amount);
         
         Ok(())
     }
     
-    pub fn mint_edition_nft(ctx: Context<MintEditionNft>) -> Result<()> {
+    // Transfer an NFT to the escrow PDA for supporters to claim
+    pub fn transfer_nft_to_escrow(ctx: Context<TransferNftToEscrow>) -> Result<()> {
         let campaign = &mut ctx.accounts.campaign;
-        let supporter_funding = &mut ctx.accounts.supporter_funding;
         
-        // Ensure campaign is fully funded
-        if !campaign.is_funded {
-            return Err(ErrorCode::CampaignNotFunded.into());
+        // Ensure only the campaign creator can transfer NFT to escrow
+        if campaign.creator != ctx.accounts.creator.key() {
+            return Err(ErrorCode::Unauthorized.into());
         }
         
-        // Ensure NFT hasn't been minted for this supporter yet
-        if supporter_funding.nft_minted {
-            return Err(ErrorCode::NftAlreadyMinted.into());
+        // Check if NFT has already been transferred to escrow
+        if campaign.nft_in_escrow {
+            return Err(ErrorCode::NftAlreadyInEscrow.into());
         }
         
-        // Check if we've reached the maximum editions
-        if campaign.editions_minted >= campaign.max_editions {
-            return Err(ErrorCode::MaxEditionsReached.into());
-        }
-        
-        // Increment the edition number for this campaign
-        campaign.editions_minted = campaign.editions_minted.checked_add(1)
-            .ok_or(ErrorCode::ArithmeticError)?;
-        
-        // Record the edition number for this supporter and mark as minted
-        supporter_funding.edition_number = campaign.editions_minted;
-        supporter_funding.nft_minted = true;
-        
-        // Mint the edition token to the recipient's token account
-        token::mint_to(
+        // Transfer the NFT token from the creator to the escrow PDA
+        // We're transferring 1 token (the NFT)
+        token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
-                MintTo {
-                    mint: ctx.accounts.edition_mint.to_account_info(),
-                    to: ctx.accounts.recipient_token_account.to_account_info(),
-                    authority: ctx.accounts.mint_authority.to_account_info(),
+                token::Transfer {
+                    from: ctx.accounts.creator_token_account.to_account_info(),
+                    to: ctx.accounts.escrow_token_account.to_account_info(),
+                    authority: ctx.accounts.creator.to_account_info(),
                 },
             ),
-            1, // Mint exactly 1 token for the edition NFT
+            1, // Transfer exactly 1 token (the NFT)
         )?;
         
-        // Store the edition mint in the supporter funding record for future reference
-        supporter_funding.edition_mint = ctx.accounts.edition_mint.key();
+        // Mark that the NFT is now in escrow and ready for claiming
+        campaign.nft_in_escrow = true;
         
-        // Print the edition using Metaplex Token Metadata program
-        // For a hackathon, we'll record the data but won't make the actual CPI call
-        // In a production implementation, you would make the CPI call to the Token Metadata program
-        
-        msg!("Edition NFT minted successfully!");
+        msg!("NFT transferred to escrow successfully!");
         msg!("Campaign: {}", campaign.project_name);
-        msg!("Edition number: {}/{}", supporter_funding.edition_number, campaign.max_editions);
-        msg!("Recipient: {}", ctx.accounts.supporter_funding.supporter);
-        msg!("Edition mint: {}", ctx.accounts.edition_mint.key());
+        msg!("NFT Mint: {}", ctx.accounts.nft_mint.key());
+        msg!("Escrow Token Account: {}", ctx.accounts.escrow_token_account.key());
         
         Ok(())
     }
+
+// Claim an NFT from escrow as a supporter who funded the campaign
+pub fn claim_nft_from_escrow(ctx: Context<ClaimNftFromEscrow>) -> Result<()> {
+    let campaign = &mut ctx.accounts.campaign;
+    let supporter_funding = &mut ctx.accounts.supporter_funding;
+    
+    // Ensure campaign is fully funded
+    if !campaign.is_funded {
+        return Err(ErrorCode::CampaignNotFunded.into());
+    }
+    
+    // Ensure the NFT is in escrow
+    if !campaign.nft_in_escrow {
+        return Err(ErrorCode::NftNotInEscrow.into());
+    }
+    
+    // Ensure NFT hasn't been claimed by this supporter yet
+    if supporter_funding.nft_minted {
+        return Err(ErrorCode::NftAlreadyMinted.into());
+    }
+    
+    // Check if we've reached the maximum claimable NFTs
+    if campaign.editions_minted >= campaign.max_editions {
+        return Err(ErrorCode::MaxEditionsReached.into());
+    }
+    
+    // Increment the number of claimed NFTs for this campaign
+    campaign.editions_minted = campaign.editions_minted.checked_add(1)
+        .ok_or(ErrorCode::ArithmeticError)?;
+    
+    // Record the edition number for this supporter
+    supporter_funding.edition_number = campaign.editions_minted;
+    
+    // Get the escrow PDA's bump
+    let escrow_bump = ctx.bumps.escrow_authority;
+    
+    // Create seeds for escrow PDA signing
+    let campaign_key = campaign.key();
+    let seeds = &[
+        b"escrow".as_ref(),
+        campaign_key.as_ref(),
+        &[escrow_bump]
+    ];
+    // Transfer the NFT from escrow to the supporter
+    token::transfer(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            token::Transfer {
+                from: ctx.accounts.escrow_token_account.to_account_info(),
+                to: ctx.accounts.supporter_token_account.to_account_info(),
+                authority: ctx.accounts.escrow_authority.to_account_info(),
+            },
+            &[seeds],
+        ),
+        1, // Transfer exactly 1 token (the NFT)
+    )?;
+    
+    // Mark that this supporter has claimed their NFT
+    supporter_funding.nft_minted = true;
+    supporter_funding.edition_mint = ctx.accounts.nft_mint.key();
+    
+    msg!("NFT claimed from escrow successfully!");
+    msg!("Campaign: {}", campaign.project_name);
+    msg!("Edition number: {}/{}", supporter_funding.edition_number, campaign.max_editions);
+    msg!("Recipient: {}", supporter_funding.supporter);
+    msg!("NFT Mint: {}", ctx.accounts.nft_mint.key());
+    
+    Ok(())
+}
+
+// New instruction to update the supporter's NFT mint info after frontend minting
+// Create a struct for updating supporter NFT mint info
+#[derive(Accounts)]
+pub struct UpdateSupporterNftMint<'info> {
+    // Campaign account that must be fully funded
+    #[account(mut)]
+    pub campaign: Account<'info, Campaign>,
+    
+    // The supporter funding record to update
+    #[account(
+        mut,
+        seeds = [
+            b"supporter-funding",
+            campaign.key().as_ref(),
+            supporter_funding.supporter.as_ref(),
+        ],
+        bump,
+        constraint = supporter_funding.campaign == campaign.key() @ ErrorCode::InvalidCampaign
+    )]
+    pub supporter_funding: Account<'info, SupporterFunding>,
+    
+    /// CHECK: The creator account (not required to sign)
+    #[account(constraint = creator.key() == campaign.creator @ ErrorCode::InvalidCampaign)]
+    pub creator: AccountInfo<'info>,
+    
+    // Signer for the transaction (must be the supporter who funded the campaign)
+    #[account(mut, constraint = authority.key() == supporter_funding.supporter @ ErrorCode::Unauthorized)]
+    pub authority: Signer<'info>,
+    
+    /// CHECK: The master edition NFT mint, verified by constraint to match the campaign's NFT mint
+    #[account(constraint = master_edition_mint.key() == campaign.nft_mint @ ErrorCode::InvalidCampaign)]
+    pub master_edition_mint: AccountInfo<'info>,
+    
+    /// CHECK: The new edition mint account that will be created
+    #[account(mut)]
+    pub edition_mint: AccountInfo<'info>,
+    
+    /// CHECK: Mint authority for the edition mint
+    pub mint_authority: Signer<'info>,
+    
+    /// CHECK: Recipient's token account for the edition NFT
+    #[account(mut)]
+    pub recipient_token_account: AccountInfo<'info>,
+    
+    // Required programs
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+// Legacy function kept for backward compatibility during transition
+// Will mark a supporter as having claimed an NFT without actual transfer
+pub fn update_supporter_nft_mint(ctx: Context<UpdateSupporterNftMint>, edition_number: u64) -> Result<()> {
+    let campaign = &mut ctx.accounts.campaign;
+    let supporter_funding = &mut ctx.accounts.supporter_funding;
+    
+    // Ensure campaign is fully funded
+    if !campaign.is_funded {
+        return Err(ErrorCode::CampaignNotFunded.into());
+    }
+    
+    // Ensure NFT hasn't been claimed by this supporter yet
+    if supporter_funding.nft_minted {
+        return Err(ErrorCode::NftAlreadyMinted.into());
+    }
+    
+    // Update campaign edition count if needed
+    if edition_number > campaign.editions_minted {
+        campaign.editions_minted = edition_number;
+    }
+    
+    // Mark the NFT as minted with the specified edition number
+    // This doesn't actually transfer any NFT, just updates the record
+    supporter_funding.nft_minted = true;
+    supporter_funding.edition_number = edition_number;
+    
+    // Store the edition mint in the supporter funding record for future reference
+    supporter_funding.edition_mint = ctx.accounts.edition_mint.key();
+    
+    msg!("NFT claim status updated successfully (legacy method)");
+    msg!("Campaign: {}", campaign.project_name);
+    msg!("Edition number: {}/{}", supporter_funding.edition_number, campaign.max_editions);
+    msg!("Recipient: {}", ctx.accounts.supporter_funding.supporter);
+    msg!("Edition mint: {}", ctx.accounts.edition_mint.key());
+    
+    Ok(())
+}
 }
 
 #[derive(Accounts)]
@@ -417,7 +561,7 @@ pub struct ClaimRefund<'info> {
     pub system_program: Program<'info, System>,
 }
 
-// Context for minting edition NFTs to supporters
+// Context for treasury withdrawals
 #[derive(Accounts)]
 pub struct WithdrawTreasury<'info> {
     // Admin account must be a signer
@@ -435,13 +579,127 @@ pub struct WithdrawTreasury<'info> {
     pub system_program: Program<'info, System>,
 }
 
+// Context for minting edition NFTs to supporters
+#[derive(Accounts)]
+pub struct TransferNftToEscrow<'info> {
+    // Campaign account
+    #[account(mut)]
+    pub campaign: Account<'info, Campaign>,
+    
+    // Campaign creator as signer
+    #[account(
+        mut,
+        constraint = creator.key() == campaign.creator @ ErrorCode::Unauthorized
+    )]
+    pub creator: Signer<'info>,
+    
+    // The NFT mint account
+    #[account(
+        constraint = nft_mint.key() == campaign.nft_mint @ ErrorCode::InvalidNftMint
+    )]
+    pub nft_mint: Account<'info, Mint>,
+    
+    // Creator's token account holding the NFT
+    #[account(
+        mut,
+        constraint = creator_token_account.mint == nft_mint.key() @ ErrorCode::InvalidTokenAccount,
+        constraint = creator_token_account.owner == creator.key() @ ErrorCode::Unauthorized
+    )]
+    pub creator_token_account: Account<'info, TokenAccount>,
+    
+    // PDA that acts as the escrow authority
+    #[account(
+        seeds = [b"escrow", campaign.key().as_ref()],
+        bump
+    )]
+    /// CHECK: This is a PDA used as the escrow authority
+    pub escrow_authority: AccountInfo<'info>,
+    
+    // Token account owned by the escrow PDA to hold the NFT
+    #[account(
+        init,
+        payer = creator,
+        associated_token::mint = nft_mint,
+        associated_token::authority = escrow_authority
+    )]
+    pub escrow_token_account: Account<'info, TokenAccount>,
+    
+    // Required programs
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimNftFromEscrow<'info> {
+    // Campaign account
+    #[account(mut)]
+    pub campaign: Account<'info, Campaign>,
+    
+    // The supporter funding record to update
+    #[account(
+        mut,
+        seeds = [
+            b"supporter-funding",
+            campaign.key().as_ref(),
+            supporter.key().as_ref(),
+        ],
+        bump,
+        constraint = supporter_funding.campaign == campaign.key() @ ErrorCode::InvalidCampaign,
+        constraint = supporter_funding.supporter == supporter.key() @ ErrorCode::Unauthorized
+    )]
+    pub supporter_funding: Account<'info, SupporterFunding>,
+    
+    // Supporter as signer
+    #[account(mut)]
+    pub supporter: Signer<'info>,
+    
+    // The NFT mint account
+    #[account(
+        constraint = nft_mint.key() == campaign.nft_mint @ ErrorCode::InvalidNftMint
+    )]
+    pub nft_mint: Account<'info, Mint>,
+    
+    // PDA that acts as the escrow authority
+    #[account(
+        seeds = [b"escrow", campaign.key().as_ref()],
+        bump
+    )]
+    /// CHECK: This is a PDA used as the escrow authority
+    pub escrow_authority: AccountInfo<'info>,
+    
+    // Token account owned by the escrow PDA holding the NFT
+    #[account(
+        mut,
+        constraint = escrow_token_account.mint == nft_mint.key() @ ErrorCode::InvalidTokenAccount,
+        constraint = escrow_token_account.owner == escrow_authority.key() @ ErrorCode::InvalidTokenAccount
+    )]
+    pub escrow_token_account: Account<'info, TokenAccount>,
+    
+    // Supporter's token account to receive the NFT
+    #[account(
+        init,
+        payer = supporter,
+        associated_token::mint = nft_mint,
+        associated_token::authority = supporter
+    )]
+    pub supporter_token_account: Account<'info, TokenAccount>,
+    
+    // Required programs
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
 #[derive(Accounts)]
 pub struct MintEditionNft<'info> {
     // Campaign must be fully funded
     #[account(mut)]
     pub campaign: Account<'info, Campaign>,
     
-    // The supporter funding record
+    // The supporter funding record to update
     #[account(
         mut,
         seeds = [
@@ -454,14 +712,15 @@ pub struct MintEditionNft<'info> {
     )]
     pub supporter_funding: Account<'info, SupporterFunding>,
     
-    // Creator of the campaign (authority for the campaign)
-    pub creator: Signer<'info>,
+    /// CHECK: The creator account (not required to sign)
+    #[account(constraint = creator.key() == campaign.creator @ ErrorCode::InvalidCampaign)]
+    pub creator: AccountInfo<'info>,
     
-    // Signer for the transaction (must be the campaign creator)
-    #[account(constraint = creator.key() == campaign.creator @ ErrorCode::Unauthorized)]
+    // Signer for the transaction (must be the supporter who funded the campaign)
+    #[account(constraint = authority.key() == supporter_funding.supporter @ ErrorCode::Unauthorized)]
     pub authority: Signer<'info>,
     
-    /// CHECK: This is the master edition NFT mint, verified by constraint to match the campaign's NFT mint
+    /// CHECK: The master edition NFT mint, verified by constraint to match the campaign's NFT mint
     #[account(constraint = master_edition_mint.key() == campaign.nft_mint @ ErrorCode::InvalidCampaign)]
     pub master_edition_mint: AccountInfo<'info>,
     
@@ -476,32 +735,11 @@ pub struct MintEditionNft<'info> {
     #[account(mut)]
     pub recipient_token_account: AccountInfo<'info>,
     
-    /// CHECK: Master edition metadata account
-    pub master_edition_metadata: AccountInfo<'info>,
-    
-    /// CHECK: Master edition account
-    pub master_edition: AccountInfo<'info>,
-    
-    /// CHECK: Edition metadata account
-    pub edition_metadata: AccountInfo<'info>,
-    
-    /// CHECK: Edition marker account
-    pub edition_marker: AccountInfo<'info>,
-    
-    // System program
-    pub system_program: Program<'info, System>,
-    
-    // Token program for token operations
+    // Required programs
     pub token_program: Program<'info, Token>,
-    
-    // Associated token program for creating token accounts
     pub associated_token_program: Program<'info, AssociatedToken>,
-    
-    /// CHECK: Metaplex Token Metadata program
-    pub token_metadata_program: AccountInfo<'info>,
-    
-    /// CHECK: Rent sysvar
-    pub rent: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
 #[account]
@@ -522,6 +760,7 @@ pub struct Campaign {
     pub nft_symbol: String,
     pub nft_uri: String,
     pub nft_mint: Pubkey,
+    pub nft_in_escrow: bool, // Flag to indicate whether NFT has been transferred to escrow
     
     // Edition NFT tracking
     pub max_editions: u64,        // Maximum number of editions that can be minted (5 for hackathon demo)
@@ -563,6 +802,7 @@ impl Campaign {
         4 + nft_symbol.len() + // nft_symbol string
         4 + nft_uri.len() + // nft_uri string
         32 + // nft_mint pubkey
+        1 + // nft_in_escrow
         8 +  // max_editions
         8    // editions_minted
     }
@@ -602,8 +842,44 @@ pub enum ErrorCode {
     #[msg("Refund has already been claimed")]
     RefundAlreadyClaimed,
     
-    #[msg("Not authorized to perform this action")]
+    #[msg("Funds not yet eligible for withdrawal")]
+    NotEligibleForWithdrawal,
+    
+    #[msg("Unauthorized: only the creator can withdraw funds")]
     Unauthorized,
+    
+    #[msg("Invalid campaign")]
+    InvalidCampaign,
+    
+    #[msg("Arithmetic error during calculation")]
+    ArithmeticError,
+    
+    #[msg("Campaign is not past end date")]
+    CampaignNotEnded,
+    
+    #[msg("Campaign is funded")]
+    CampaignIsFunded,
+    
+    #[msg("Not authorized to mint edition NFT")]
+    NotAuthorizedToMintNft,
+    
+    #[msg("NFT already minted for this supporter")]
+    NftAlreadyMinted,
+    
+    #[msg("Maximum number of edition NFTs reached")]
+    MaxEditionsReached,
+    
+    #[msg("NFT already in escrow")]
+    NftAlreadyInEscrow,
+    
+    #[msg("NFT not in escrow yet")]
+    NftNotInEscrow,
+    
+    #[msg("Invalid NFT mint address")]
+    InvalidNftMint,
+    
+    #[msg("Invalid token account")]
+    InvalidTokenAccount,
     
     #[msg("Amount would cause overflow")]
     AmountOverflow,
@@ -613,19 +889,4 @@ pub enum ErrorCode {
     
     #[msg("Insufficient funds for the operation")]
     InsufficientFunds,
-    
-    #[msg("Invalid campaign")]
-    InvalidCampaign,
-    
-    #[msg("Maximum number of editions already minted")]
-    MaxEditionsReached,
-    
-    #[msg("NFT has already been minted for this supporter")]
-    NftAlreadyMinted,
-    
-    #[msg("NFT minting operation failed")]
-    NftMintingFailed,
-    
-    #[msg("Arithmetic error")]
-    ArithmeticError,
 }

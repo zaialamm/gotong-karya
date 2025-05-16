@@ -3,7 +3,6 @@ import { Program } from "@coral-xyz/anchor";
 import { Gkescrow } from "../target/types/gkescrow";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { assert } from "chai";
-import * as token from "@solana/spl-token";
 
 // Admin public key - should match the one in lib.rs
 const ADMIN_PUBKEY = "ZaikXX6zRGseZdyGnpdBaTkBdetDNgZcGEqzeZgAXtM";
@@ -582,6 +581,140 @@ describe("gkescrow", () => {
       console.log("For a full test of edition minting, we would need to setup token accounts and metadata accounts");
     } catch (error) {
       console.error("Error in NFT edition test:", error);
+      throw error;
+    }
+  });
+
+  it("Tests updateSupporterNftMint instruction for NFT claiming", async () => {
+    // Create new keypairs for this specific test
+    const nftCreator = Keypair.fromSeed(Uint8Array.from(Array(32).fill(5)));
+    const nftSupporter = Keypair.fromSeed(Uint8Array.from(Array(32).fill(6)));
+    const masterNftMint = Keypair.generate(); // Master NFT mint
+    const editionNftMint = Keypair.generate(); // This represents the edition NFT mint created by frontend
+    
+    // Fund accounts
+    await transferSol(wallet, nftCreator.publicKey, 1 * LAMPORTS_PER_SOL);
+    await transferSol(wallet, nftSupporter.publicKey, 1 * LAMPORTS_PER_SOL);
+    
+    const nftProjectName = "NFT Update Test Project";
+    
+    // Find campaign PDA
+    const [nftCampaignPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("campaign"),
+        nftCreator.publicKey.toBuffer(),
+        Buffer.from(nftProjectName),
+      ],
+      program.programId
+    );
+    
+    // Find supporter funding PDA
+    const [supporterFundingPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("supporter-funding"),
+        nftCampaignPda.toBuffer(),
+        nftSupporter.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+    
+    console.log("\n🔍 Testing updateSupporterNftMint instruction...");
+    console.log("Campaign PDA:", nftCampaignPda.toString());
+    console.log("Supporter Funding PDA:", supporterFundingPda.toString());
+    
+    try {
+      // Initialize campaign
+      console.log("Creating campaign for NFT update test...");
+      await program.methods
+        .initializeCampaign(
+          nftProjectName,
+          "Test campaign for NFT update functionality",
+          new anchor.BN(1 * LAMPORTS_PER_SOL), // 1 SOL goal
+          "Test NFT",
+          "TNFT",
+          "https://arweave.net/test-uri"
+        )
+        .accounts({
+          campaign: nftCampaignPda,
+          creator: nftCreator.publicKey,
+          nftMint: masterNftMint.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([nftCreator])
+        .rpc();
+      
+      console.log("Campaign created for NFT update test");
+      
+      // Fund the campaign to make it fully funded
+      console.log("Funding campaign...");
+      await program.methods
+        .fundCampaign(new anchor.BN(1 * LAMPORTS_PER_SOL)) // Fund with exactly the goal amount
+        .accounts({
+          campaign: nftCampaignPda,
+          supporter: nftSupporter.publicKey,
+          supporterFunding: supporterFundingPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([nftSupporter])
+        .rpc();
+      
+      console.log("Campaign fully funded");
+      
+      // Verify campaign is now fully funded
+      const campaignAccount = await program.account.campaign.fetch(nftCampaignPda);
+      assert.equal(campaignAccount.isFunded, true, "Campaign should be marked as funded");
+      
+      // Before calling updateSupporterNftMint, confirm supporter funding exists and NFT not yet minted
+      const initialSupporterData = await program.account.supporterFunding.fetch(supporterFundingPda);
+      assert.equal(initialSupporterData.nftMinted, false, "NFT should not be minted initially");
+      
+      // Call updateSupporterNftMint (simulates what would happen after frontend minting with Metaplex)
+      console.log("Calling updateSupporterNftMint instruction...");
+      const editionNumber = 1; // First edition
+      
+      await program.methods
+        .updateSupporterNftMint(new anchor.BN(editionNumber))
+        .accounts({
+          campaign: nftCampaignPda,
+          supporterFunding: supporterFundingPda,
+          authority: nftSupporter.publicKey, // The supporter is claiming their own NFT
+          editionMint: editionNftMint.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([nftSupporter])
+        .rpc();
+      
+      console.log("updateSupporterNftMint instruction executed successfully");
+      
+      // Verify the supporter funding account is updated correctly
+      const supporterFundingData = await program.account.supporterFunding.fetch(supporterFundingPda);
+      
+      console.log("Supporter funding data after NFT claim:", {
+        nftMinted: supporterFundingData.nftMinted,
+        editionNumber: supporterFundingData.editionNumber.toNumber(),
+        editionMint: supporterFundingData.editionMint.toString()
+      });
+      
+      // Assert everything was updated correctly
+      assert.equal(supporterFundingData.nftMinted, true, "NFT should be marked as minted");
+      assert.equal(supporterFundingData.editionNumber, editionNumber, "Edition number should match");
+      assert.equal(
+        supporterFundingData.editionMint.toString(),
+        editionNftMint.publicKey.toString(),
+        "Edition mint address should be stored correctly"
+      );
+      
+      // Also verify campaign's editions_minted was incremented
+      const updatedCampaign = await program.account.campaign.fetch(nftCampaignPda);
+      assert.equal(
+        updatedCampaign.editionsMinted.toNumber(), 
+        editionNumber,
+        "Campaign editions_minted should be updated"
+      );
+      
+      console.log("✅ NFT claiming test with updateSupporterNftMint instruction successful!");
+    } catch (error) {
+      console.error("Error in NFT claiming test:", error);
       throw error;
     }
   });

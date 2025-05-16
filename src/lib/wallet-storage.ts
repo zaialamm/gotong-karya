@@ -2,7 +2,8 @@
 export const WALLET_STORAGE_KEYS = {
   FUNDED_CAMPAIGNS: 'gk-funded-campaigns',
   WITHDRAWN_CAMPAIGNS: 'gk-withdrawn-campaigns',
-  REFUNDED_CAMPAIGNS: 'gk-refunded-campaigns'
+  REFUNDED_CAMPAIGNS: 'gk-refunded-campaigns',
+  CLAIMED_NFTS: 'gk-claimed-nfts'
 };
 
 /**
@@ -186,4 +187,91 @@ export const hasRefundedCampaign = (walletAddress: string, campaignId: string): 
   }
   
   return false;
+};
+
+/**
+ * Store claimed NFT in localStorage
+ * @param walletAddress Supporter's wallet address
+ * @param campaignId Campaign ID for the claimed NFT
+ * @param editionMint Edition mint address (optional)
+ */
+export const storeNftClaimed = (walletAddress: string, campaignId: string, editionMint?: string): void => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || !walletAddress) return;
+  
+  const storageKey = `${WALLET_STORAGE_KEYS.CLAIMED_NFTS}-${walletAddress}`;
+  
+  // Get existing claimed NFTs for this wallet
+  let claimedNfts: Record<string, string> = {};
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      claimedNfts = JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('Error retrieving claimed NFTs from localStorage:', error);
+  }
+  
+  // Add the campaign if it's not already there
+  if (!claimedNfts[campaignId]) {
+    claimedNfts[campaignId] = editionMint || 'claimed';
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(claimedNfts));
+      console.log(`NFT for campaign ${campaignId} marked as claimed by supporter ${walletAddress}`);
+    } catch (error) {
+      console.error('Error storing claimed NFT in localStorage:', error);
+    }
+  }
+};
+
+/**
+ * Check if an NFT has been claimed by a specific wallet for a campaign
+ * @param walletAddress Supporter's wallet address
+ * @param campaignId Campaign ID to check
+ * @returns boolean indicating if the wallet has claimed an NFT for this campaign
+ */
+export const hasClaimedNft = (walletAddress: string, campaignId: string): boolean => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || !walletAddress) return false;
+  
+  const storageKey = `${WALLET_STORAGE_KEYS.CLAIMED_NFTS}-${walletAddress}`;
+  
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const claimedNfts: Record<string, string> = JSON.parse(stored);
+      return !!claimedNfts[campaignId];
+    }
+  } catch (error) {
+    console.error('Error checking claimed NFTs in localStorage:', error);
+  }
+  
+  return false;
+};
+
+/**
+ * Get the claimed NFT edition mint address for a campaign
+ * @param walletAddress Supporter's wallet address
+ * @param campaignId Campaign ID to check
+ * @returns The edition mint address if available, empty string otherwise
+ */
+export const getClaimedNftMint = (walletAddress: string, campaignId: string): string => {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || !walletAddress) return '';
+  
+  const storageKey = `${WALLET_STORAGE_KEYS.CLAIMED_NFTS}-${walletAddress}`;
+  
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const claimedNfts: Record<string, string> = JSON.parse(stored);
+      return claimedNfts[campaignId] || '';
+    }
+  } catch (error) {
+    console.error('Error getting claimed NFT mint address from localStorage:', error);
+  }
+  
+  return '';
 };

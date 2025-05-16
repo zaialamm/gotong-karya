@@ -12,11 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSolToIdrRate } from "@/hooks/use-sol-to-idr-rate";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, CalendarDays, CheckCircle, Users, Tag, Hourglass, XCircle, HandCoins, Gift, Sparkles, Loader2, Coins } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle, Users, Tag, Hourglass, XCircle, HandCoins, Gift, Sparkles, Loader2, Coins, ExternalLink, Award } from "lucide-react";
 import { FundModal } from "@/components/support-creators/FundModal";
 import { useState, useEffect, useCallback } from "react";
 import { EditionNftInfo } from "@/components/campaign-detail/EditionNftInfo";
 import { SupporterEditionInfo } from "@/components/campaign-detail/SupporterEditionInfo";
+import { NftClaimButton } from "@/components/campaign-detail/NftClaimButton";
 import { useWallet } from "@/hooks/use-wallet";
 import { getRealTimeStatus, formatCampaignTimeRemaining, isMockCampaign } from "@/lib/campaign-utils";
 import { hasFundedCampaign, hasWithdrawnCampaign, storeWithdrawnCampaign, hasRefundedCampaign, storeRefundedCampaign } from "@/lib/wallet-storage";
@@ -116,10 +117,29 @@ export default function CampaignDetailsPage() {
       const result = await withdrawCampaignFunds(campaignId);
       
       if (result.success) {
+        // Create a nice HTML message with a clickable link to Solana Explorer
+        const htmlMessage = (
+          <div className="space-y-2">
+            <p>The funds have been transferred to your wallet (minus the 2.5% platform fee).</p>
+            <div className="mt-2">
+              <a
+                href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-1 rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20 transition-colors"
+              >
+                <span>View Transaction on Explorer</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        );
+
         toast({
           title: "Funds withdrawn successfully!",
-          description: "The funds have been transferred to your wallet (minus the 2.5% platform fee).",
-          variant: "default"
+          description: htmlMessage,
+          variant: "default",
+          duration: 5000
         });
         
         // Store the withdrawal status in localStorage
@@ -483,6 +503,18 @@ export default function CampaignDetailsPage() {
               >
                 <CheckCircle className="mr-2 h-5 w-5" /> Refund Claimed
               </Button>
+            )}
+            
+            {/* Show NFT claim button for supporters when campaign is successfully funded */}
+            {!isCreator && (realTimeStatus === "Successful" || realTimeStatus === "Completed") && hasFundedCampaign(address || "", campaignId) && (
+              <NftClaimButton 
+                campaignId={campaignId}
+                walletAddress={address}
+                onClaimed={() => {
+                  // Force refresh the SupporterEditionInfo component
+                  setCampaign({...campaign});
+                }}
+              />
             )}
             
             {/* Support button - only show during active campaign */}

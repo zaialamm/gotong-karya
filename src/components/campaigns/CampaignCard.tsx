@@ -82,23 +82,23 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
         <div className="space-y-1 text-sm mb-3">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Raised:</span>
-            <span className="font-medium text-foreground">{raisedSOL.toLocaleString()} {SOL_CURRENCY_SYMBOL}</span>
+            <span className="font-medium text-foreground">{raisedSOL ? raisedSOL.toLocaleString() : '0'} {SOL_CURRENCY_SYMBOL}</span>
           </div>
           <div className="flex justify-between text-xs text-muted-foreground/80">
             <span></span>
-            {isLoadingRate ? <Skeleton className="h-4 w-24 inline-block" /> : <span>({raisedIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>}
+            {isLoadingRate ? <Skeleton className="h-4 w-24 inline-block" /> : <span>({raisedIDR ? raisedIDR.toLocaleString() : '0'} {IDR_CURRENCY_SYMBOL})</span>}
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Goal:</span>
-            <span className="font-medium text-foreground">{fundingGoalSOL.toLocaleString()} {SOL_CURRENCY_SYMBOL}</span>
+            <span className="font-medium text-foreground">{fundingGoalSOL ? fundingGoalSOL.toLocaleString() : '0'} {SOL_CURRENCY_SYMBOL}</span>
           </div>
            <div className="flex justify-between text-xs text-muted-foreground/80">
             <span></span>
-            {isLoadingRate ? <Skeleton className="h-4 w-24 inline-block" /> : <span>({goalIDR.toLocaleString()} {IDR_CURRENCY_SYMBOL})</span>}
+            {isLoadingRate ? <Skeleton className="h-4 w-24 inline-block" /> : <span>({goalIDR ? goalIDR.toLocaleString() : '0'} {IDR_CURRENCY_SYMBOL})</span>}
           </div>
         </div>
-        <Progress value={progressPercentage} aria-label={`${progressPercentage.toFixed(0)}% funded`} className="w-full h-2.5" />
-        <p className="text-xs text-muted-foreground mt-1 text-right">{progressPercentage.toFixed(0)}% Funded</p>
+        <Progress value={progressPercentage || 0} aria-label={`${(progressPercentage || 0).toFixed(0)}% funded`} className="w-full h-2.5" />
+        <p className="text-xs text-muted-foreground mt-1 text-right">{(progressPercentage || 0).toFixed(0)}% Funded</p>
         {endDate && realTimeStatus === "Running" && (
           <p className="text-xs text-muted-foreground mt-2 flex items-center">
             <CalendarDays className="mr-1 h-3 w-3" /> Ends: {
