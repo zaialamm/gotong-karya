@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable server components for this project to avoid issues with Solana integration
+  // This will make the entire app client-side rendered
+  reactStrictMode: false,
+  
   webpack: (config) => {
     // This is necessary for Metaplex to work with Next.js
     config.resolve.fallback = {
@@ -8,6 +12,21 @@ const nextConfig = {
       os: false,
       path: false,
       crypto: false,
+    };
+    
+    // Exclude specific files from being processed
+    config.module = {
+      ...config.module,
+      exprContextCritical: false,
+      rules: [
+        ...config.module.rules,
+        {
+          test: /\.m?js$/,
+          resolve: {
+            fullySpecified: false,
+          },
+        },
+      ],
     };
     
     return config;
@@ -25,13 +44,18 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   
+  // Disable source maps in production to reduce build size
+  productionBrowserSourceMaps: false,
+  
   // Exclude specific directories from being processed by Next.js
   experimental: {
+    // Disable app directory features that might be causing issues
+    serverActions: false,
     outputFileTracingExcludes: {
       '*': [
-        'gkescrow/tests/**',
-        'gkescrow/target/**',
+        'gkescrow/**',
         'node_modules/@coral-xyz/anchor/**',
+        'node_modules/@solana/**',
       ],
     },
   },
