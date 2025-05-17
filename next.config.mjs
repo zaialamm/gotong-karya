@@ -60,17 +60,10 @@ const nextConfig = {
     },
   },
   
-  // Allow all images by disabling Next.js image optimization
-  // This is simpler than specifying every possible domain
   images: {
     unoptimized: true
   },
 
-  // Explicitly set env variables for client-side access
-  // Note: Variables prefixed with NEXT_PUBLIC_ are automatically exposed to the browser
-  env: {
-    // Any additional non-NEXT_PUBLIC_ variables you want to expose
-  },
 };
 
 export default nextConfig;
