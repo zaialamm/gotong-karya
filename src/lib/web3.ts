@@ -316,37 +316,29 @@ export const fundCampaign = async (
       ],
       program.programId
     );
-    
-    // Call the fund_campaign instruction
-    let txSignature;
-    let transactionAlreadyProcessed = false;
-    try {
-      txSignature = await program.methods
-        .fundCampaign(lamportsAmount)
-        .accounts({
-          campaign: campaignPubkey,
-          supporter: supporterPubkey,
-          supporterFunding: supporterFundingPDA,
-          systemProgram: web3.SystemProgram.programId,
-        })
-        .rpc({skipPreflight: true, commitment: 'confirmed'});
+
+    const connection = getSolanaConnection();
+
+    // get recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+    const txSignature = await program.methods
+      .fundCampaign(lamportsAmount)
+      .accounts({
+        campaign: campaignPubkey,
+        supporter: supporterPubkey,
+        supporterFunding: supporterFundingPDA,
+        systemProgram: web3.SystemProgram.programId,
+      })
+      .rpc({skipPreflight: true, commitment: 'confirmed'});
+
+      await connection.confirmTransaction({
+        signature: txSignature,
+        blockhash: blockhash,
+        lastValidBlockHeight: lastValidBlockHeight
+      }, 'confirmed');
       
-      console.log(`Campaign funded successfully! Signature: ${txSignature}`);
-    } catch (error: any) {
-      // Check if the error is due to the transaction already being processed
-      if (error.message && error.message.includes('This transaction has already been processed')) {
-        console.log('Transaction was already processed, treating as success');
-        transactionAlreadyProcessed = true;
-        // Extract signature from the error message if possible
-        const match = error.message.match(/Signature: ([A-Za-z0-9]+)/);
-        txSignature = match ? match[1] : 'TRANSACTION_ALREADY_PROCESSED';
-        console.log(`Using existing transaction signature: ${txSignature}`);
-      } else {
-        // This is a different error, rethrow it
-        console.error("Funding error:", error);
-        throw new Error(`Failed to fund campaign: ${error.message}`);
-      }
-    } 
+    console.log(`Campaign funded successfully! Signature: ${txSignature}`);
 
     // Fetch updated campaign data
     let campaignData;
@@ -866,6 +858,8 @@ export const withdrawCampaignFunds = async (
     console.log('Withdrawing funds from campaign:', campaignId);
     console.log('Creator:', campaignCreator.toString());
     console.log('Treasury PDA:', treasuryPda.toString());
+
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     
     // Call the withdraw_funds instruction
     const tx = await program.methods
@@ -876,17 +870,25 @@ export const withdrawCampaignFunds = async (
         treasury: treasuryPda,
         systemProgram: web3.SystemProgram.programId,
       })
-      .rpc();
+      .rpc({
+        skipPreflight: true,
+        commitment: 'confirmed',
+      });
+
+    await connection.confirmTransaction({
+      signature: tx,
+      blockhash: blockhash,
+      lastValidBlockHeight: lastValidBlockHeight
+    }, 'confirmed');
     
     console.log('Withdrawal transaction successful:', tx);
     
-    // For a real implementation, we would query the transaction to get the exact amount
-    // For now, we'll return a placeholder
     return {
       success: true,
       signature: tx,
       amountLamports: 0 // This would be the actual amount in a real implementation
     };
+    
   } catch (error) {
     console.error('Error withdrawing funds:', error);
     throw error;
