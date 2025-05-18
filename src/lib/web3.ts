@@ -9,22 +9,17 @@ import { Campaign, Supporter, FundingResult, CampaignStatus } from '../types';
 import { 
   ASSOCIATED_TOKEN_PROGRAM_ID, 
   getAssociatedTokenAddress,
-  createInitializeMintInstruction,
-  createAssociatedTokenAccountInstruction
 } from '@solana/spl-token';
 
 // Define token program ID and constants
 const TOKEN_PROGRAM_ID = new web3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const METADATA_PROGRAM_ID = new web3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
-// Constants for token account sizes
-const MINT_SIZE = 82; // Size of a mint account in bytes
-
 // Import Metaplex Token Metadata program
-import { mplTokenMetadata, fetchMasterEditionFromSeeds, findMetadataPda, findMasterEditionPda, findEditionMarkerPda, createNft, printSupply, printV1, TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
+import { mplTokenMetadata, createNft, printSupply, TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
-import { walletAdapterIdentity, WalletAdapter } from '@metaplex-foundation/umi-signer-wallet-adapters';
-import { generateSigner, publicKey as umiPublicKey, percentAmount } from '@metaplex-foundation/umi';
+import { walletAdapterIdentity} from '@metaplex-foundation/umi-signer-wallet-adapters';
+import { generateSigner, percentAmount } from '@metaplex-foundation/umi';
 
 // Define Phantom wallet types to avoid TypeScript errors
 declare global {
@@ -121,21 +116,6 @@ const createMetaplexNft = async (
         const signedTx = await provider.signTransaction(transaction);
         if (txId) signedTxCache.add(txId);
         return signedTx;
-
-      /*
-      signTransaction: async (transaction: any) => {
-        console.log("Signing transaction...");
-        if (!provider) {
-          console.error("Wallet provider not found. Reconnecting...");
-          await connectPhantomWallet(); // Try to reconnect
-          const updatedProvider = window.phantom?.solana;
-          if (!updatedProvider) {
-            throw new Error("Wallet provider not available. Please refresh the page and try again.");
-          }
-          return await updatedProvider.signTransaction(transaction);
-        }
-        return await provider.signTransaction(transaction);
-      */
       },
 
       signAllTransactions: async (transactions: any[]) => {
@@ -805,6 +785,9 @@ export const claimRefund = async (
     console.log('Claiming refund from campaign:', campaignId);
     console.log('Supporter:', supporterPubkey.toString());
     console.log('Supporter funding PDA:', supporterFundingPDA.toString());
+
+    // get recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     
     // Call the claim_refund instruction
     const tx = await program.methods
@@ -814,7 +797,16 @@ export const claimRefund = async (
         supporter: supporterPubkey,
         supporterFunding: supporterFundingPDA,
       })
-      .rpc();
+      .rpc({
+        skipPreflight: true,
+        commitment: 'confirmed',
+      });
+
+    await connection.confirmTransaction({
+      signature: tx,
+      blockhash: blockhash,
+      lastValidBlockHeight: lastValidBlockHeight
+    }, 'confirmed');
     
     console.log('Refund transaction successful:', tx);
     
@@ -950,6 +942,7 @@ export const claimNftFromEscrow = async (
     
     // Check if NFT was already claimed by this supporter
     try {
+
       const supporterFundingData = await program.account.supporterFunding.fetch(supporterFundingPDA);
       
       if (supporterFundingData.nftMinted) {
@@ -986,6 +979,10 @@ export const claimNftFromEscrow = async (
     console.log('Claiming NFT from escrow...');
     
     try {
+
+      // get recent blockhash
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
       // Call the claim_nft_from_escrow instruction
       const claimTx = await program.methods
         .claimNftFromEscrow()
@@ -1002,7 +999,16 @@ export const claimNftFromEscrow = async (
           systemProgram: web3.SystemProgram.programId,
           rent: web3.SYSVAR_RENT_PUBKEY
         })
-        .rpc();
+        .rpc({
+        skipPreflight: true,
+        commitment: 'confirmed',
+      });
+
+      await connection.confirmTransaction({
+        signature: claimTx,
+        blockhash: blockhash,
+        lastValidBlockHeight: lastValidBlockHeight
+      }, 'confirmed');
       
       console.log('NFT claimed successfully! Transaction signature:', claimTx);
       
@@ -1038,23 +1044,6 @@ export const claimNftFromEscrow = async (
       message: `Failed to claim NFT: ${error.message}`
     };
   }
-};
-
-// Kept for backward compatibility, redirects to the new function
-export const mintEditionNft = async (
-  campaignId: string,
-  supporterId: string,
-  editionNumber: number = 0
-): Promise<{ success: boolean; editionMint: string; signature: string; message?: string }> => {
-  console.log('Using new claimNftFromEscrow function instead of mintEditionNft');
-  const result = await claimNftFromEscrow(campaignId);
-  
-  return {
-    success: result.success,
-    editionMint: result.editionMint || '',
-    signature: result.signature || 'no-signature',
-    message: result.message
-  };
 };
 
 /**
