@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'GotongKarya Platform',
-  description: 'Decentralized Funding, Creators and Fans Win.',
+  description: 'Decentralized Crowdfunding Platform built on Solana',
 };
 
 export default function RootLayout({
