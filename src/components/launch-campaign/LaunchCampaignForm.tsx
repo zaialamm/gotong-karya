@@ -274,7 +274,7 @@ export function LaunchCampaignForm() {
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto shadow-xl">
+    <Card className="w-full shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl flex items-center text-primary">
           <Rocket className="mr-2 h-6 w-6" />

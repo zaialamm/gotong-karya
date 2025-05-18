@@ -14,7 +14,7 @@ export default function LaunchCampaignPage() {
         </p>
       </section>
       
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-8 items-start">
         <div className="w-full lg:w-2/3">
           <LaunchCampaignForm />
         </div>
