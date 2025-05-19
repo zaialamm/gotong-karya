@@ -300,7 +300,7 @@ export const fundCampaign = async (
     const connection = getSolanaConnection();
 
     // get recent blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    /*const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');*/
 
     const txSignature = await program.methods
       .fundCampaign(lamportsAmount)
@@ -312,11 +312,11 @@ export const fundCampaign = async (
       })
       .rpc({skipPreflight: true, commitment: 'confirmed'});
 
-      await connection.confirmTransaction({
+      /*await connection.confirmTransaction({
         signature: txSignature,
         blockhash: blockhash,
         lastValidBlockHeight: lastValidBlockHeight
-      }, 'confirmed');
+      }, 'confirmed');*/
       
     console.log(`Campaign funded successfully! Signature: ${txSignature}`);
 
@@ -656,8 +656,6 @@ export const launchNewCampaign = async (formData: {
     // Send transaction to initialize campaign
     console.log("Step 2: Initializing campaign on blockchain...");
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-
     const txSignature = await program.methods.initializeCampaign(
         formData.projectName,
         formData.description,
@@ -673,13 +671,6 @@ export const launchNewCampaign = async (formData: {
           systemProgram: web3.SystemProgram.programId,
         })
         .rpc({skipPreflight: true, commitment: 'confirmed'});
-        
-      
-      await connection.confirmTransaction({
-        signature: txSignature,
-        blockhash: blockhash,
-        lastValidBlockHeight: lastValidBlockHeight
-      }, 'confirmed');
       
       console.log("✅ Campaign initialized successfully!");
     
@@ -785,9 +776,6 @@ export const claimRefund = async (
     console.log('Claiming refund from campaign:', campaignId);
     console.log('Supporter:', supporterPubkey.toString());
     console.log('Supporter funding PDA:', supporterFundingPDA.toString());
-
-    // get recent blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     
     // Call the claim_refund instruction
     const tx = await program.methods
@@ -802,12 +790,6 @@ export const claimRefund = async (
         commitment: 'confirmed',
       });
 
-    await connection.confirmTransaction({
-      signature: tx,
-      blockhash: blockhash,
-      lastValidBlockHeight: lastValidBlockHeight
-    }, 'confirmed');
-    
     console.log('Refund transaction successful:', tx);
     
     return {
@@ -850,8 +832,6 @@ export const withdrawCampaignFunds = async (
     console.log('Withdrawing funds from campaign:', campaignId);
     console.log('Creator:', campaignCreator.toString());
     console.log('Treasury PDA:', treasuryPda.toString());
-
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     
     // Call the withdraw_funds instruction
     const tx = await program.methods
@@ -866,12 +846,6 @@ export const withdrawCampaignFunds = async (
         skipPreflight: true,
         commitment: 'confirmed',
       });
-
-    await connection.confirmTransaction({
-      signature: tx,
-      blockhash: blockhash,
-      lastValidBlockHeight: lastValidBlockHeight
-    }, 'confirmed');
     
     console.log('Withdrawal transaction successful:', tx);
     
@@ -980,9 +954,6 @@ export const claimNftFromEscrow = async (
     
     try {
 
-      // get recent blockhash
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-
       // Call the claim_nft_from_escrow instruction
       const claimTx = await program.methods
         .claimNftFromEscrow()
@@ -1003,12 +974,6 @@ export const claimNftFromEscrow = async (
         skipPreflight: true,
         commitment: 'confirmed',
       });
-
-      await connection.confirmTransaction({
-        signature: claimTx,
-        blockhash: blockhash,
-        lastValidBlockHeight: lastValidBlockHeight
-      }, 'confirmed');
       
       console.log('NFT claimed successfully! Transaction signature:', claimTx);
       
@@ -1242,8 +1207,6 @@ export const transferNftToEscrow = async (
     
     // Call transfer_nft_to_escrow instruction
     console.log("Sending NFT transfer to escrow transaction...");
-
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
     
     const transferTx = await program.methods
       .transferNftToEscrow()
@@ -1265,11 +1228,6 @@ export const transferNftToEscrow = async (
       });
     
     console.log("Waiting for NFT transfer transaction confirmation...");
-    await connection.confirmTransaction({
-      signature: transferTx,
-      blockhash: blockhash,
-      lastValidBlockHeight: lastValidBlockHeight
-    }, 'confirmed');
     
     console.log("NFT transfer to escrow confirmed with signature:", transferTx);
     
