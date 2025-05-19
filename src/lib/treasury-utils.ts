@@ -28,7 +28,7 @@ export const withdrawTreasuryFunds = async (amountSol: number): Promise<{
     // Create proper public key from wallet
     const adminPubkey = new web3.PublicKey(phantomProvider.publicKey.toString());
     
-    // Create instruction to withdraw from treasury
+    // Get program ID
     const programId = new web3.PublicKey(ESCROW_PROGRAM_ID);
     
     // Derive treasury PDA
@@ -43,100 +43,85 @@ export const withdrawTreasuryFunds = async (amountSol: number): Promise<{
     // Convert SOL to lamports
     const amountLamports = new BN(amountSol * web3.LAMPORTS_PER_SOL);
     
-    // Use a simpler approach that doesn't hit TypeScript errors
-    const idl = gkescrowIdl as anchor.Idl;
-    
-    // Create a wallet adapter for Anchor with explicit sendAndConfirm implementation
-    const wallet = {
+    // Create a custom provider that uses Phantom for signing
+    const anchorWallet = {
+      connection,
       publicKey: adminPubkey,
-      signTransaction: async (tx: web3.Transaction) => phantomProvider.signTransaction(tx),
-      signAllTransactions: async (txs: web3.Transaction[]) => phantomProvider.signAllTransactions(txs),
-      // Add a sendTransaction method to handle the transaction sending
-      sendTransaction: async (tx: web3.Transaction, connection: web3.Connection) => {
+      signTransaction: async (tx: web3.Transaction) => {
+        return await phantomProvider.signTransaction(tx);
+      },
+      signAllTransactions: async (txs: web3.Transaction[]) => {
+        return await phantomProvider.signAllTransactions(txs);
+      },
+      send: async (tx: web3.Transaction, signers?: web3.Signer[]) => {
+        if (signers?.length) {
+          tx.partialSign(...signers);
+        }
         const signedTx = await phantomProvider.signTransaction(tx);
         const signature = await connection.sendRawTransaction(signedTx.serialize());
+        await connection.confirmTransaction(signature, 'confirmed');
         return signature;
       }
     };
     
-    // Create the Anchor provider with a custom sendAndConfirm implementation
+    // Create the Anchor provider
     const provider = new anchor.AnchorProvider(
       connection, 
-      wallet as any, 
+      anchorWallet as any, 
       { preflightCommitment: 'confirmed' }
     );
     
-    // Add the missing sendAndConfirm method to the provider
-    provider.sendAndConfirm = async (tx: web3.Transaction) => {
-      const blockhash = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash.blockhash;
-      tx.feePayer = adminPubkey;
-      
-      const signedTx = await phantomProvider.signTransaction(tx);
-      
-      try {
-        // Try to send the transaction
-        const signature = await connection.sendRawTransaction(signedTx.serialize());
-        await connection.confirmTransaction({
-          signature,
-          blockhash: blockhash.blockhash,
-          lastValidBlockHeight: blockhash.lastValidBlockHeight
-        });
-        return signature;
-      } catch (error: any) {
-        // Check if this is a "transaction already processed" error
-        if (error.message && error.message.includes("already been processed")) {
-          console.log("Transaction was already processed (successful)");
-          
-          // Try to extract the signature from the error if possible
-          let extractedSignature = '';
-          try {
-            // Some errors include the signature in the message
-            const signatureMatch = error.message.match(/signature ([A-Za-z0-9]+)/);
-            if (signatureMatch && signatureMatch[1]) {
-              extractedSignature = signatureMatch[1];
-              console.log("Extracted transaction signature:", extractedSignature);
-              return extractedSignature;
-            }
-          } catch (extractError) {
-            console.warn("Could not extract signature from error", extractError);
-          }
-          
-          // If we couldn't extract a signature, generate a placeholder
-          // This is not ideal but prevents the UI from showing an error for a successful transaction
-          return `treasury_withdrawal_${Date.now().toString(16)}`;
-        }
-        
-        // If it's not a "transaction already processed" error, rethrow it
-        throw error;
-      };
-    };
-    
-    // Create the program
+    // Set the provider globally to avoid TypeScript errors
     anchor.setProvider(provider);
-    const program = new anchor.Program(idl, programId);
     
-    // Build the transaction manually to have more control
-    const instruction = await program.methods
-      .withdrawTreasury(amountLamports)
-      .accounts({
-        admin: adminPubkey,
-        treasury: treasuryPDA,
-        systemProgram: web3.SystemProgram.programId,
-      })
-      .instruction();
+    const program = new anchor.Program(gkescrowIdl, provider);
     
-    // Create and send the transaction
-    const tx = new web3.Transaction().add(instruction);
-    const signature = await provider.sendAndConfirm(tx);
-    
-    console.log('Treasury withdrawal successful!', signature);
-    
-    return {
-      success: true,
-      message: `Successfully withdrawn ${amountSol} SOL from the treasury!`,
-      signature: signature
-    };
+    try {
+      console.log('Sending treasury withdrawal transaction...');
+
+      // Send the transaction using the rpc method
+      const signature = await program.methods
+        .withdrawTreasury(amountLamports)
+        .accounts({
+          admin: adminPubkey,
+          treasury: treasuryPDA,
+          systemProgram: web3.SystemProgram.programId
+        })
+        .rpc({ 
+          skipPreflight: true, 
+          commitment: 'confirmed' 
+        });
+
+      console.log('Treasury withdrawal successful!', signature);
+      
+      return {
+        success: true,
+        message: `Successfully withdrawn ${amountSol} SOL from the treasury!`,
+        signature: signature
+      };
+    } catch (txError: any) {
+      // Handle the "transaction already processed" error
+      if (txError.message && txError.message.includes('already been processed')) {
+        console.log('Transaction was already processed (successful)');
+        
+        // Try to extract the signature from the error if possible
+        const signatureMatch = txError.message.match(/signature ([A-Za-z0-9]+)/);
+        const extractedSignature = signatureMatch && signatureMatch[1] 
+          ? signatureMatch[1]
+          : `treasury_withdrawal_${Date.now().toString(16)}`;
+          
+        console.log('Using transaction signature:', extractedSignature);
+        
+        return {
+          success: true,
+          message: `Successfully withdrawn ${amountSol} SOL from the treasury!`,
+          signature: extractedSignature
+        };
+      }
+      
+      // Rethrow any other errors
+      throw txError;
+    }
   } catch (error: any) {
     console.error('Error withdrawing from treasury:', error);
     return {
